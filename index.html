@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Single-Page XML Editor</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        .error-glow { border-color: #ef4444; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2); }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col font-sans">
+
+    <header class="bg-gray-800 border-b border-gray-700 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center space-x-3">
+            <span class="text-2xl">🛠️</span>
+            <h1 class="text-xl font-bold tracking-tight">PureJS <span class="text-blue-400">XML Workstation</span></h1>
+        </div>
+        <div class="flex items-center gap-3">
+            <input type="file" id="fileInput" accept=".xml" class="hidden">
+            <button onclick="document.getElementById('fileInput').click()" class="bg-gray-700 hover:bg-gray-600 text-sm font-medium py-2 px-4 rounded-lg transition border border-gray-600 cursor-pointer">
+                📂 Open XML
+            </button>
+            <button onclick="formatXML()" class="bg-blue-600 hover:bg-blue-500 text-sm font-medium py-2 px-4 rounded-lg transition cursor-pointer">
+                ✨ Format / Prettify
+            </button>
+            <button onclick="minifyXML()" class="bg-purple-600 hover:bg-purple-500 text-sm font-medium py-2 px-4 rounded-lg transition cursor-pointer">
+                ⚡ Minify
+            </button>
+            <button onclick="downloadXML()" class="bg-emerald-600 hover:bg-emerald-500 text-sm font-medium py-2 px-4 rounded-lg transition cursor-pointer">
+                💾 Save File
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 overflow-hidden">
+        
+        <div class="flex flex-col bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-xl">
+            <div class="bg-gray-850 px-4 py-2 border-b border-gray-700 flex justify-between items-center">
+                <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">XML Raw Source</span>
+                <span id="statusIndicator" class="text-xs text-emerald-400 flex items-center gap-1">
+                    <span class="h-2 w-2 rounded-full bg-emerald-400"></span> Ready
+                </span>
+            </div>
+            <textarea id="xmlInput" spellcheck="false" class="flex-1 p-4 bg-gray-950 text-gray-200 font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Paste or open your XML document here..."><company>
+  <department name="Engineering">
+    <employee id="1">
+      <name>Alice Vance</name>
+      <role>Lead Developer</role>
+    </employee>
+    <employee id="2">
+      <name>Bob Smith</name>
+      <role>UI Designer</role>
+    </employee>
+  </department>
+</company></textarea>
+        </div>
+
+        <div class="flex flex-col bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-xl">
+            <div class="bg-gray-850 px-4 py-2 border-b border-gray-700 flex justify-between items-center">
+                <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Interactive DOM Tree</span>
+                <span class="text-xs text-gray-500">Click elements to modify</span>
+            </div>
+            <div id="treeContainer" class="flex-1 p-6 overflow-y-auto font-mono text-sm bg-gray-900 selection:bg-blue-500/30">
+                </div>
+        </div>
+    </main>
+
+    <footer id="errorLog" class="hidden bg-red-950/80 border-t border-red-800 px-6 py-3 text-sm text-red-300 font-mono">
+        </footer>
+
+    <script>
+        const xmlInput = document.getElementById('xmlInput');
+        const treeContainer = document.getElementById('treeContainer');
+        const errorLog = document.getElementById('errorLog');
+        const statusIndicator = document.getElementById('statusIndicator');
+
+        // Watch for raw keyboard inputs
+        xmlInput.addEventListener('input', parseAndRenderTree);
+        
+        // Handle physical file uploads
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                xmlInput.value = evt.target.result;
+                parseAndRenderTree();
+                formatXML();
+            };
+            reader.readAsText(file);
+        });
+
+        // Parse XML and update DOM visualization
+        function parseAndRenderTree() {
+            const xmlString = xmlInput.value.trim();
+            if (!xmlString) {
+                treeContainer.innerHTML = '<span class="text-gray-500 italic">No data to display.</span>';
+                clearError();
+                return;
+            }
+
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlString, "application/xml");
+            const parserError = xmlDoc.getElementsByTagName("parsererror")[0];
+
+            if (parserError) {
+                showError(parserError.textContent);
+                return;
+            }
+
+            clearError();
+            treeContainer.innerHTML = '';
+            // Render from root element node
+            treeContainer.appendChild(buildTreeNode(xmlDoc.documentElement));
+        }
+
+        // Recursively construct HTML node trees mirroring the XML structural elements
+        function buildTreeNode(node) {
+            if (node.nodeType !== Node.ELEMENT_NODE) return null;
+
+            const elementContainer = document.createElement('div');
+            elementContainer.className = "ml-4 my-1 border-l border-gray-700/50 pl-3";
+
+            // Header line containing tags and element configuration
+            const tagLine = document.createElement('div');
+            tagLine.className = "flex flex-wrap items-center gap-1 py-0.5 text-blue-300";
+
+            // Tag open tag notation
+            const startTag = document.createElement('span');
+            startTag.className = "text-gray-500 font-bold";
+            startTag.textContent = "<";
+            tagLine.appendChild(startTag);
+
+            // Node identity mapping
+            const tagNameSpan = document.createElement('span');
+            tagNameSpan.className = "text-blue-400 font-medium hover:underline cursor-pointer";
+            tagNameSpan.textContent = node.tagName;
+            tagNameSpan.onclick = () => {
+                const newTagName = prompt(`Change tag name details for "${node.tagName}":`, node.tagName);
+                if (newTagName && newTagName.trim()) {
+                    renameTag(node, newTagName.trim());
+                }
+            };
+            tagLine.appendChild(tagNameSpan);
+
+            // Dynamically evaluate attributes inside current scope
+            Array.from(node.attributes).forEach(attr => {
+                const attrSpan = document.createElement('span');
+                attrSpan.className = "ml-2 text-amber-400/90 text-xs cursor-pointer hover:bg-amber-500/10 rounded px-1";
+                attrSpan.textContent = `${attr.name}="${attr.value}"`;
+                attrSpan.onclick = (e) => {
+                    e.stopPropagation();
+                    const newVal = prompt(`Update attribute [${attr.name}] value:`, attr.value);
+                    if (newVal !== null) {
+                        node.setAttribute(attr.name, newVal);
+                        updateSourceFromDOM(node.ownerDocument);
+                    }
+                };
+                tagLine.appendChild(attrSpan);
+            });
+
+            // Action Add Feature Attribute Trigger Button
+            const addAttrBtn = document.createElement('button');
+            addAttrBtn.textContent = "+attr";
+            addAttrBtn.className = "ml-2 opacity-0 hover:opacity-100 text-[10px] bg-gray-700 text-gray-300 px-1 rounded cursor-pointer transition";
+            addAttrBtn.onclick = (e) => {
+                e.stopPropagation();
+                const name = prompt("Enter new attribute name:");
+                if (!name) return;
+                const val = prompt(`Enter value for attribute "${name}":`);
+                node.setAttribute(name, val || "");
+                updateSourceFromDOM(node.ownerDocument);
+            };
+            tagLine.appendChild(addAttrBtn);
+
+            const endTag = document.createElement('span');
+            endTag.className = "text-gray-500 font-bold";
+            endTag.textContent = ">";
+            tagLine.appendChild(endTag);
+
+            // Render direct inline text contents cleanly
+            let textChild = null;
+            let hasElementChildren = false;
+
+            Array.from(node.childNodes).forEach(child => {
+                if (child.nodeType === Node.TEXT_NODE && child.nodeValue.trim()) {
+                    textChild = child;
+                } else if (child.nodeType === Node.ELEMENT_NODE) {
+                    hasElementChildren = true;
+                }
+            });
+
+            if (textChild && !hasElementChildren) {
+                const valSpan = document.createElement('span');
+                valSpan.className = "mx-1 text-emerald-300 font-sans cursor-pointer hover:underline bg-emerald-500/5 px-1 rounded";
+                valSpan.textContent = textChild.nodeValue;
+                valSpan.onclick = (e) => {
+                    e.stopPropagation();
+                    const newVal = prompt(`Modify text contents of <${node.tagName}>:`, textChild.nodeValue);
+                    if (newVal !== null) {
+                        textChild.nodeValue = newVal;
+                        updateSourceFromDOM(node.ownerDocument);
+                    }
+                };
+                tagLine.appendChild(valSpan);
+            }
+
+            elementContainer.appendChild(tagLine);
+
+            // Render embedded child markup trees
+            if (hasElementChildren) {
+                Array.from(node.childNodes).forEach(child => {
+                    const childMarkup = buildTreeNode(child);
+                    if (childMarkup) elementContainer.appendChild(childMarkup);
+                });
+            }
+
+            // Append closing tag structural text markers visually if elements contain nesting
+            if (hasElementChildren) {
+                const closeTagLine = document.createElement('div');
+                closeTagLine.className = "text-gray-500 font-bold py-0.5";
+                closeTagLine.textContent = `</${node.tagName}>`;
+                elementContainer.appendChild(closeTagLine);
+            } else if (!textChild) {
+                // Self closing normalization visualization if completely empty element
+                endTag.textContent = " />";
+            } else {
+                const closeInline = document.createElement('span');
+                closeInline.className = "text-gray-500 font-bold";
+                closeInline.textContent = `</${node.tagName}>`;
+                tagLine.appendChild(closeInline);
+            }
+
+            return elementContainer;
+        }
+
+        // Apply changes back upstream to raw layout text representation output window
+        function updateSourceFromDOM(doc) {
+            const serializer = new XMLSerializer();
+            xmlInput.value = serializer.serializeToString(doc);
+            formatXML();
+        }
+
+        // Safely map modified nodes into newly defined XML structure elements
+        function renameTag(node, newName) {
+            const doc = node.ownerDocument;
+            const newNode = doc.createElement(newName);
+            
+            // Move configurations
+            Array.from(node.attributes).forEach(attr => newNode.setAttribute(attr.name, attr.value));
+            while (node.firstChild) {
+                newNode.appendChild(node.firstChild);
+            }
+            
+            node.parentNode.replaceChild(newNode, node);
+            updateSourceFromDOM(doc);
+        }
+
+        // Structural Formatting engine rules
+        function formatXML() {
+            const xmlString = xmlInput.value.trim();
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlString, "application/xml");
+            
+            if (xmlDoc.getElementsByTagName("parsererror")[0]) return;
+
+            let formatted = '';
+            let indent = '';
+            const tab = '  '; // Two space spacing standard tabs
+
+            // Explode elements via regex string manipulation arrays cleanly
+            const arr = xmlString.replace(/>\s*</g, '><').replace(/</g, '\r\n<').split('\r\n');
+            
+            arr.forEach(node => {
+                if (node.match(/^\/\*/)) {
+                    formatted += indent + node + '\r\n';
+                } else if (node.match(/^<\/\w/)) {
+                    // Node structural close tracking logic decreases steps
+                    indent = indent.substring(tab.length);
+                    formatted += indent + node + '\r\n';
+                } else if (node.match(/^<\w[^>]*[^\/]>.*$/)) {
+                    // Normal elements tracking
+                    formatted += indent + node + '\r\n';
+                    if (!node.match(/^<\w[^>]*\/>/) && !node.match(/<\/.*>$/)) {
+                        indent += tab;
+                    }
+                } else if (node.match(/^<\w[^>]*\/>/)) {
+                    formatted += indent + node + '\r\n';
+                } else {
+                    formatted += indent + node + '\r\n';
+                }
+            });
+
+            xmlInput.value = formatted.trim();
+            parseAndRenderTree();
+        }
+
+        // Compact strings by parsing layout lines cleanly
+        function minifyXML() {
+            const xmlString = xmlInput.value.trim();
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlString, "application/xml");
+            
+            if (xmlDoc.getElementsByTagName("parsererror")[0]) return;
+
+            const serializer = new XMLSerializer();
+            const serialized = serializer.serializeToString(xmlDoc);
+            xmlInput.value = serialized.replace(/>\s*</g, '><').trim();
+            parseAndRenderTree();
+        }
+
+        // Build data stream payloads downloading as native standalone filesystem elements
+        function downloadXML() {
+            const blob = new Blob([xmlInput.value], { type: 'application/xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'document.xml';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Error handling routines
+        function showError(msg) {
+            errorLog.textContent = `XML Syntax Error: ${msg.split('\n')[0]}`;
+            errorLog.classList.remove('hidden');
+            xmlInput.classList.add('error-glow');
+            statusIndicator.innerHTML = '<span class="h-2 w-2 rounded-full bg-red-500"></span> Error Found';
+            statusIndicator.className = "text-xs text-red-400 flex items-center gap-1";
+        }
+
+        function clearError() {
+            errorLog.classList.add('hidden');
+            xmlInput.classList.remove('error-glow');
+            statusIndicator.innerHTML = '<span class="h-2 w-2 rounded-full bg-emerald-400"></span> Parsing OK';
+            statusIndicator.className = "text-xs text-emerald-400 flex items-center gap-1";
+        }
+
+        // Initialize view mapping pipeline
+        parseAndRenderTree();
+        formatXML();
+    </script>
+</body>
+</html>
