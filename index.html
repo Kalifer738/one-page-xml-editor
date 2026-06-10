@@ -7,223 +7,1195 @@
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <style>
         .error-glow { border-color: #ef4444; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2); }
+        
+        .xml-editor, .highlight-layer {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+            font-size: 14px !important;
+            line-height: 22px !important;
+            padding: 16px !important;
+            box-sizing: border-box !important;
+            white-space: pre !important;
+            overflow-wrap: normal !important;
+        }
+
+        .highlight-target { background-color: rgba(59, 130, 246, 0.35) !important; color: #60a5fa !important; border-radius: 4px; }
+        .highlight-ancestor { background-color: rgba(59, 130, 246, 0.04); border-left-color: #3b82f6 !important; }
+        
+        .source-highlight-target { background-color: rgba(59, 130, 246, 0.25); color: #93c5fd; }
+        .source-highlight-ancestor { background-color: rgba(59, 130, 246, 0.06); }
+        .query-match { background-color: rgba(234, 179, 8, 0.35) !important; color: #fef08a !important; border-radius: 4px; box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.2); }
+        
+        /* High-Contrast Diff Engine Overhaul Styles */
+        .diff-added-bg { background-color: rgba(16, 185, 129, 0.25) !important; border-left: 3px solid #10b981 !important; }
+        .diff-added-text { color: #34d399 !important; background-color: rgba(16, 185, 129, 0.3) !important; font-weight: bold !important; border-radius: 3px; padding: 0 2px; }
+        
+        .diff-modified-bg { background-color: rgba(239, 68, 68, 0.2) !important; border-left: 3px solid #ef4444 !important; }
+        .diff-modified-text { color: #f87171 !important; background-color: rgba(239, 68, 68, 0.3) !important; font-weight: bold !important; border-radius: 3px; padding: 0 2px; }
+
+        .tree-row { cursor: pointer; transition: background-color 100ms; }
+        .tree-row:hover { background-color: rgba(255, 255, 255, 0.02); }
     </style>
 </head>
-<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col font-sans">
+<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col font-sans relative">
 
-    <header class="bg-gray-800 border-b border-gray-700 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+    <header class="bg-gray-800 border-b border-gray-700 px-6 py-4 flex flex-wrap items-center justify-between gap-4 shrink-0">
         <div class="flex items-center space-x-3">
             <span class="text-2xl">🛠️</span>
             <h1 class="text-xl font-bold tracking-tight">PureJS <span class="text-blue-400">XML Workstation</span></h1>
         </div>
+        
+        <div class="flex bg-gray-950 p-1 rounded-xl border border-gray-700">
+            <button id="tab-inspector" onclick="switchViewMode('inspector')" class="px-5 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer bg-blue-600 text-white shadow-md">
+                🔍 XML Inspector & Queries
+            </button>
+            <button id="tab-pipeline" onclick="switchViewMode('pipeline')" class="px-5 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer text-gray-400 hover:text-gray-200">
+                🚀 Rules Engine & Pipeline
+            </button>
+        </div>
+
         <div class="flex items-center gap-3">
             <input type="file" id="fileInput" accept=".xml" class="hidden">
             <button onclick="document.getElementById('fileInput').click()" class="bg-gray-700 hover:bg-gray-600 text-sm font-medium py-2 px-4 rounded-lg transition border border-gray-600 cursor-pointer">
                 📂 Open XML
             </button>
-            <button onclick="formatXML()" class="bg-blue-600 hover:bg-blue-500 text-sm font-medium py-2 px-4 rounded-lg transition cursor-pointer">
-                ✨ Format / Prettify
+            <button onclick="formatXML('input')" class="bg-gray-700 hover:bg-gray-600 text-sm font-medium py-2 px-4 rounded-lg transition border border-gray-600 cursor-pointer">
+                ✨ Format Input
             </button>
-            <button onclick="minifyXML()" class="bg-purple-600 hover:bg-purple-500 text-sm font-medium py-2 px-4 rounded-lg transition cursor-pointer">
-                ⚡ Minify
+            <button onclick="minifyXML('input')" class="bg-purple-600 hover:bg-purple-500 text-sm font-medium py-2 px-4 rounded-lg transition cursor-pointer">
+                ⚡ Minify Input
             </button>
             <button onclick="downloadXML()" class="bg-emerald-600 hover:bg-emerald-500 text-sm font-medium py-2 px-4 rounded-lg transition cursor-pointer">
-                💾 Save File
+                💾 Save Output File
             </button>
         </div>
     </header>
 
-    <main class="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 overflow-hidden">
-        
-        <div class="flex flex-col bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-xl">
-            <div class="bg-gray-850 px-4 py-2 border-b border-gray-700 flex justify-between items-center">
-                <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">XML Raw Source</span>
-                <span id="statusIndicator" class="text-xs text-emerald-400 flex items-center gap-1">
-                    <span class="h-2 w-2 rounded-full bg-emerald-400"></span> Ready
-                </span>
-            </div>
-            <textarea id="xmlInput" spellcheck="false" class="flex-1 p-4 bg-gray-950 text-gray-200 font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Paste or open your XML document here..."><company>
-  <department name="Engineering">
-    <employee id="1">
-      <name>Alice Vance</name>
-      <role>Lead Developer</role>
-    </employee>
-    <employee id="2">
-      <name>Bob Smith</name>
-      <role>UI Designer</role>
-    </employee>
-  </department>
-</company></textarea>
-        </div>
-
-        <div class="flex flex-col bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-xl">
-            <div class="bg-gray-850 px-4 py-2 border-b border-gray-700 flex justify-between items-center">
-                <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Interactive DOM Tree</span>
-                <span class="text-xs text-gray-500">Click elements to modify</span>
-            </div>
-            <div id="treeContainer" class="flex-1 p-6 overflow-y-auto font-mono text-sm bg-gray-900 selection:bg-blue-500/30">
+    <div id="view-panel-inspector" class="flex flex-col flex-1 overflow-hidden">
+        <section class="bg-gray-800 border-b border-gray-700 px-6 py-4 flex flex-col gap-4 shrink-0">
+            <div class="flex flex-col bg-gray-950 rounded-xl border border-gray-700 overflow-hidden shadow-inner h-[160px] resize-y min-h-[120px] max-h-[500px]">
+                <div class="bg-gray-900 px-4 py-1.5 border-b border-gray-800 flex justify-between items-center shrink-0">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-amber-400">Live XPath Matches Tree Preview (Evaluates on Input)</span>
+                    <button onclick="copyXPathResultsAsText()" class="bg-gray-800 hover:bg-gray-700 text-[11px] text-gray-300 py-0.5 px-2 rounded transition cursor-pointer font-medium border border-gray-700">
+                        📋 Copy Results as Text
+                    </button>
                 </div>
-        </div>
-    </main>
+                <div id="xpathResultsContainer" class="flex-1 p-4 overflow-y-auto font-mono text-sm select-text">
+                    <div class="text-xs text-gray-500 italic">Provide a valid XPath expression below to compile isolated preview contexts.</div>
+                </div>
+            </div>
 
-    <footer id="errorLog" class="hidden bg-red-950/80 border-t border-red-800 px-6 py-3 text-sm text-red-300 font-mono">
-        </footer>
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <div class="flex flex-col gap-2">
+                    <label class="text-xs font-semibold uppercase tracking-wider text-gray-400">XPath Expression Selector (Auto-Evaluates)</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="xpathInput" placeholder="e.g., //employee/name or //employee/@id" class="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm font-mono text-gray-200 focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+                <div class="flex flex-col gap-2">
+                    <label class="text-xs font-semibold uppercase tracking-wider text-gray-400">Batch Transformation Workbench (Applies to Input)</label>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <select id="massEditAction" onchange="toggleActionFields()" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-2 text-sm text-gray-300 focus:outline-none focus:border-blue-500">
+                            <option value="addAttr">Add Attribute</option>
+                            <option value="replaceAttr">Replace Attribute</option>
+                            <option value="removeAttr">Remove Attribute</option>
+                            <option value="modifyText">Modify Inner Text</option>
+                        </select>
+                        <input type="text" id="massEditAttrName" placeholder="Attr Name" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-2 text-sm font-mono text-gray-200 focus:outline-none focus:border-blue-500">
+                        <input type="text" id="massEditValue" placeholder="New Value" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-2 text-sm font-mono text-gray-200 focus:outline-none focus:border-blue-500">
+                        <button onclick="applyMassEdit()" class="bg-red-600 hover:bg-red-500 text-sm font-medium py-2 px-2 rounded-lg transition cursor-pointer truncate">
+                            ⚙️ Apply Change
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <main class="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 overflow-hidden">
+            <div class="flex flex-col bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-xl h-full">
+                <div class="bg-gray-850 px-4 py-2 border-b border-gray-700 flex justify-between items-center shrink-0">
+                    <div class="flex flex-col">
+                        <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Source XML Input</span>
+                        <span class="text-[10px] text-gray-500">Shortcuts: Ctrl+D (Duplicate)</span>
+                    </div>
+                    <span id="statusIndicator" class="text-xs text-emerald-400 flex items-center gap-1">
+                        <span class="h-2 w-2 rounded-full bg-emerald-400"></span> Input OK
+                    </span>
+                </div>
+                <div class="flex-1 relative overflow-hidden bg-gray-950">
+                    <pre id="highlightLayerInput" class="highlight-layer absolute top-0 left-0 w-full h-full text-transparent select-none pointer-events-none overflow-auto m-0 border-none"></pre>
+                    <textarea id="xmlInput" spellcheck="false" class="xml-editor absolute top-0 left-0 w-full h-full bg-transparent text-gray-200 font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 overflow-auto m-0 border-none z-10" placeholder="Paste or open your XML document here..."><company>
+   <department>
+      <employee id="101">
+         <name>Bob</name>
+      </employee>
+      <employee id="102">
+         <name>Bob</name>
+      </employee>
+      <employee id="103">
+         <name>Bob</name>
+      </employee>
+   </department>
+</company></textarea>
+                </div>
+            </div>
+
+            <div class="flex flex-col bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-xl h-full">
+                <div class="bg-gray-850 px-4 py-2 border-b border-gray-700 flex justify-between items-center shrink-0">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Input DOM Tree</span>
+                    <button id="syncScrollBtn" onclick="toggleScrollLock()" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-[11px] text-gray-300 py-1 px-2.5 rounded transition cursor-pointer font-medium flex items-center gap-1">
+                        🔗 Sync Scroll: <span class="text-red-400 font-bold">OFF</span>
+                    </button>
+                </div>
+                <div id="treeContainerInput" class="flex-1 p-6 overflow-y-auto font-mono text-sm bg-gray-900 selection:bg-blue-500/30"></div>
+            </div>
+        </main>
+    </div>
+
+    <div id="view-panel-pipeline" class="hidden flex-col flex-1 overflow-hidden">
+        <section class="bg-gray-850 border-b border-gray-700 p-6 flex flex-col gap-4 shrink-0">
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <div class="flex flex-col gap-1">
+                    <h2 class="text-sm font-bold uppercase tracking-wider text-gray-300">Sequential Rules Pipeline</h2>
+                    <div id="ruleUndoAlert" class="hidden text-xs bg-amber-950/80 text-amber-300 border border-amber-800/80 px-3 py-1.5 rounded-lg flex items-center gap-2 animate-pulse">
+                        <span>⚠️ Rule row deleted.</span>
+                        <button onclick="undoRuleDeletion()" class="underline font-bold text-amber-200 hover:text-white cursor-pointer">Revert / Restore Rule Now</button>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="revertPipelineBtn" onclick="triggerGlobalUndo()" disabled class="bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-medium py-1.5 px-3 rounded transition cursor-pointer border border-gray-600 text-amber-400">
+                        ↩         Undo Rules Deletion (Ctrl+Z)
+                    </button>
+                    <input type="file" id="rulesImportInput" accept=".json" class="hidden" onchange="importRulesChain(event)">
+                    <button onclick="document.getElementById('rulesImportInput').click()" class="bg-gray-700 hover:bg-gray-600 text-xs font-medium py-1.5 px-3 rounded transition cursor-pointer">
+                        📥 Import Chain
+                    </button>
+                    <button onclick="exportRulesChain()" class="bg-gray-700 hover:bg-gray-600 text-xs font-medium py-1.5 px-3 rounded transition cursor-pointer">
+                        📤 Export Chain
+                    </button>
+                    <button onclick="addNewRuleRow()" class="bg-blue-600 hover:bg-blue-500 text-xs font-medium py-1.5 px-3 rounded transition cursor-pointer">
+                        ➕ Add Rule
+                    </button>
+                    <button onclick="executeRulesChain()" class="bg-emerald-600 hover:bg-emerald-500 text-xs font-bold py-1.5 px-4 rounded transition cursor-pointer shadow-lg">
+                        🚀 Run Entire Pipeline Downward
+                    </button>
+                </div>
+            </div>
+            <div id="rulesContainer" class="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1"></div>
+        </section>
+
+        <main class="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 overflow-hidden bg-gray-950">
+            <div class="flex flex-col bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-xl h-full">
+                <div class="bg-gray-850 px-4 py-2 border-b border-gray-700 flex justify-between items-center shrink-0">
+                    <div class="flex items-center gap-4">
+                        <span class="text-xs font-semibold uppercase tracking-wider text-emerald-400">Processed Output XML</span>
+                        <div class="flex gap-2 text-[11px]">
+                            <span class="bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded border border-emerald-800">● Added Element</span>
+                            <span class="bg-red-950 text-red-400 px-2 py-0.5 rounded border border-red-900">● Modified Attr/Text</span>
+                        </div>
+                    </div>
+                    <span id="outputStatusIndicator" class="text-xs text-gray-500">Unmodified</span>
+                </div>
+                <div class="flex-1 relative overflow-hidden bg-gray-950">
+                    <pre id="highlightLayerOutput" class="highlight-layer absolute top-0 left-0 w-full h-full text-transparent select-none pointer-events-none overflow-auto m-0 border-none"></pre>
+                    <textarea id="xmlOutput" readonly class="xml-editor absolute top-0 left-0 w-full h-full bg-transparent text-emerald-300 font-mono text-sm resize-none focus:outline-none overflow-auto m-0 border-none z-10" placeholder="Transformed XML output outputs here..."></textarea>
+                </div>
+            </div>
+
+            <div class="flex flex-col bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-xl h-full">
+                <div class="bg-gray-850 px-4 py-2 border-b border-gray-700 flex justify-between items-center shrink-0">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-emerald-400">Output DOM Tree</span>
+                </div>
+                <div id="treeContainerOutput" class="flex-1 p-6 overflow-y-auto font-mono text-sm bg-gray-900 selection:bg-blue-500/30"></div>
+            </div>
+        </main>
+    </div>
+
+    <div id="nodeModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div class="bg-gray-800 border border-gray-700 w-full max-w-lg rounded-xl shadow-2xl overflow-hidden flex flex-col">
+            <div class="bg-gray-850 px-5 py-3 border-b border-gray-700 flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                    <span class="text-blue-400 font-bold font-mono" id="modalNodeTitle">&lt;element&gt;</span>
+                    <span class="text-xs uppercase tracking-wider bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded" id="modalNodeType">Element Node</span>
+                </div>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-100 text-lg cursor-pointer">&times;</button>
+            </div>
+            <div class="p-5 flex flex-col gap-4 text-sm">
+                <div id="modalMutationFields" class="flex flex-col gap-3">
+                    <div class="flex flex-col gap-1" id="tagNameInputGroup">
+                        <label class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Node Tag Name</label>
+                        <input type="text" id="modalTagName" class="bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 font-mono text-gray-200 focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div class="flex flex-col gap-1" id="textValueInputGroup">
+                        <label class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Node Content Text</label>
+                        <textarea id="modalTextValue" rows="2" class="bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 font-mono text-gray-200 focus:outline-none focus:border-blue-500 resize-none"></textarea>
+                    </div>
+                </div>
+                <div class="border-t border-gray-700/60 pt-3 flex flex-col gap-3">
+                    <div class="flex flex-col gap-1">
+                        <div class="flex items-center justify-between">
+                            <label class="text-xs font-semibold text-amber-400 uppercase tracking-wider">Absolute Node XPath</label>
+                            <button onclick="copyXPathToSearch('modalXPathAbsolute')" class="text-[11px] text-blue-400 hover:underline cursor-pointer">🎯 Copy to Query Bar</button>
+                        </div>
+                        <input type="text" id="modalXPathAbsolute" readonly class="bg-gray-900 border border-gray-800 text-gray-400 rounded px-2 py-1.5 font-mono text-xs focus:outline-none">
+                    </div>
+                    <div class="flex flex-col gap-1" id="xpathSimilarGroup">
+                        <div class="flex items-center justify-between">
+                            <label class="text-xs font-semibold text-blue-400 uppercase tracking-wider">Select Similar Nodes XPath</label>
+                            <button onclick="copyXPathToSearch('modalXPathSimilar')" class="text-[11px] text-blue-400 hover:underline cursor-pointer">✨ Copy to Query Bar</button>
+                        </div>
+                        <input type="text" id="modalXPathSimilar" readonly class="bg-gray-900 border border-gray-800 text-gray-400 rounded px-2 py-1.5 font-mono text-xs focus:outline-none">
+                    </div>
+                </div>
+            </div>
+            <div class="bg-gray-850 px-5 py-3 border-t border-gray-700 flex justify-between gap-3">
+                <button onclick="deleteTargetNodeFromModal()" id="modalDeleteBtn" class="bg-red-950 border border-red-800 hover:bg-red-900/60 text-red-300 text-xs font-medium py-2 px-3 rounded-lg transition cursor-pointer">
+                    🗑️ Delete Node
+                </button>
+                <div class="flex gap-2">
+                    <button onclick="closeModal()" class="bg-gray-700 hover:bg-gray-600 text-xs font-medium py-2 px-4 rounded-lg transition cursor-pointer">Cancel</button>
+                    <button onclick="saveModalChanges()" class="bg-blue-600 hover:bg-blue-500 text-xs font-medium py-2 px-4 rounded-lg transition cursor-pointer">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer id="errorLog" class="hidden bg-red-950/80 border-t border-red-800 px-6 py-3 text-sm text-red-300 font-mono"></footer>
 
     <script>
         const xmlInput = document.getElementById('xmlInput');
-        const treeContainer = document.getElementById('treeContainer');
+        const xmlOutput = document.getElementById('xmlOutput');
+        const highlightLayerInput = document.getElementById('highlightLayerInput');
+        const highlightLayerOutput = document.getElementById('highlightLayerOutput');
+        const treeContainerInput = document.getElementById('treeContainerInput');
+        const treeContainerOutput = document.getElementById('treeContainerOutput');
+        
         const errorLog = document.getElementById('errorLog');
         const statusIndicator = document.getElementById('statusIndicator');
+        const outputStatusIndicator = document.getElementById('outputStatusIndicator');
+        const xpathInput = document.getElementById('xpathInput');
+        const rulesContainer = document.getElementById('rulesContainer');
+        const xpathResultsContainer = document.getElementById('xpathResultsContainer');
+        const syncScrollBtn = document.getElementById('syncScrollBtn');
+        const revertPipelineBtn = document.getElementById('revertPipelineBtn');
+        const ruleUndoAlert = document.getElementById('ruleUndoAlert');
 
-        // Watch for raw keyboard inputs
-        xmlInput.addEventListener('input', parseAndRenderTree);
+        const nodeModal = document.getElementById('nodeModal');
+        const modalNodeTitle = document.getElementById('modalNodeTitle');
+        const modalNodeType = document.getElementById('modalNodeType');
+        const modalTagName = document.getElementById('modalTagName');
+        const modalTextValue = document.getElementById('modalTextValue');
+        const modalXPathAbsolute = document.getElementById('modalXPathAbsolute');
+        const modalXPathSimilar = document.getElementById('modalXPathSimilar');
+        const tagNameInputGroup = document.getElementById('tagNameInputGroup');
+        const textValueInputGroup = document.getElementById('textValueInputGroup');
+        const xpathSimilarGroup = document.getElementById('xpathSimilarGroup');
+        const modalDeleteBtn = document.getElementById('modalDeleteBtn');
+
+        let currentXmlDoc = null;
+        let outputXmlDoc = null;
+        let nodeMapInput = new Map();
+        let nodeMapOutput = new Map();
         
-        // Handle physical file uploads
+        let xpathDebounceTimer = null;
+        let rulesList = [];
+        let activeSelectedNodeContext = null; 
+        let activeSelectedAttrContext = null;
+        let activeLastMatchedSnapshotRawText = ""; 
+        
+        let scrollLockActive = false;
+        let isSyncingScroll = false;
+
+        let deletedRulesStack = [];
+
+        // Workspace Navigation Management
+        function switchViewMode(targetMode) {
+            const viewInspector = document.getElementById('view-panel-inspector');
+            const viewPipeline = document.getElementById('view-panel-pipeline');
+            const tabInspector = document.getElementById('tab-inspector');
+            const tabPipeline = document.getElementById('tab-pipeline');
+
+            if (targetMode === 'inspector') {
+                viewInspector.classList.remove('hidden');
+                viewInspector.classList.add('flex');
+                viewPipeline.classList.add('hidden');
+                viewPipeline.classList.remove('flex');
+                
+                tabInspector.className = "px-5 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer bg-blue-600 text-white shadow-md";
+                tabPipeline.className = "px-5 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer text-gray-400 hover:text-gray-200";
+                
+                highlightActiveScope();
+            } else {
+                viewPipeline.classList.remove('hidden');
+                viewPipeline.classList.add('flex');
+                viewInspector.classList.add('hidden');
+                viewInspector.classList.remove('flex');
+
+                tabPipeline.className = "px-5 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer bg-blue-600 text-white shadow-md";
+                tabInspector.className = "px-5 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer text-gray-400 hover:text-gray-200";
+                
+                runDiffComparisonHighlighter();
+            }
+        }
+
+        function updateUndoButtonState() {
+            if (deletedRulesStack.length > 0) {
+                revertPipelineBtn.disabled = false;
+                revertPipelineBtn.classList.remove('bg-gray-700', 'text-amber-400');
+                revertPipelineBtn.classList.add('bg-amber-600', 'text-white', 'border-amber-500');
+            } else {
+                revertPipelineBtn.disabled = true;
+                revertPipelineBtn.classList.add('bg-gray-700', 'text-amber-400');
+                revertPipelineBtn.classList.remove('bg-amber-600', 'text-white', 'border-amber-500');
+            }
+        }
+
+        function triggerGlobalUndo() {
+            if (deletedRulesStack.length > 0) {
+                undoRuleDeletion();
+            }
+        }
+
+        xmlInput.addEventListener('scroll', () => {
+            highlightLayerInput.scrollTop = xmlInput.scrollTop;
+            highlightLayerInput.scrollLeft = xmlInput.scrollLeft;
+            if (scrollLockActive && !isSyncingScroll) {
+                isSyncingScroll = true;
+                syncScrollFromTextToTree();
+                setTimeout(() => { isSyncingScroll = false; }, 20);
+            }
+        });
+
+        xmlOutput.addEventListener('scroll', () => {
+            highlightLayerOutput.scrollTop = xmlOutput.scrollTop;
+            highlightLayerOutput.scrollLeft = xmlOutput.scrollLeft;
+        });
+
+        treeContainerInput.addEventListener('scroll', () => {
+            if (scrollLockActive && !isSyncingScroll) {
+                isSyncingScroll = true;
+                syncScrollFromTreeToText();
+                setTimeout(() => { isSyncingScroll = false; }, 20);
+            }
+        });
+
+        function toggleScrollLock() {
+            scrollLockActive = !scrollLockActive;
+            if (scrollLockActive) {
+                syncScrollBtn.innerHTML = `🔗 Sync Scroll: <span class="text-emerald-400 font-bold">ON</span>`;
+                isSyncingScroll = true;
+                syncScrollFromTextToTree();
+                setTimeout(() => { isSyncingScroll = false; }, 20);
+            } else {
+                syncScrollBtn.innerHTML = `🔗 Sync Scroll: <span class="text-red-400 font-bold">OFF</span>`;
+            }
+        }
+
+        function syncScrollFromTextToTree() {
+            const xmlString = xmlInput.value;
+            const textHeight = xmlInput.scrollHeight - xmlInput.clientHeight;
+            if (textHeight <= 0) return;
+            
+            const pct = xmlInput.scrollTop / textHeight;
+            const estimatedCharIdx = Math.floor(xmlString.length * pct);
+            const { path } = parseHighlights(xmlString, estimatedCharIdx);
+            
+            if (path && path.length > 0) {
+                const targetNode = findTargetDOMNode(currentXmlDoc, path);
+                const visual = nodeMapInput.get(targetNode);
+                if (visual && visual.container) {
+                    const topPos = visual.container.offsetTop - treeContainerInput.offsetTop - 40;
+                    treeContainerInput.scrollTop = Math.max(0, topPos);
+                }
+            }
+        }
+
+        function syncScrollFromTreeToText() {
+            let closestNode = null;
+            let minDiff = Infinity;
+            
+            for (let pair of nodeMapInput.entries()) {
+                const visual = pair[1];
+                if (visual.container) {
+                    const diff = Math.abs(visual.container.offsetTop - treeContainerInput.offsetTop - treeContainerInput.scrollTop);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        closestNode = pair[0];
+                    }
+                }
+            }
+            
+            if (closestNode) {
+                const visual = nodeMapInput.get(closestNode);
+                if (visual && visual.sourceStart !== undefined) {
+                    const xmlString = xmlInput.value;
+                    const linesBefore = xmlString.substring(0, visual.sourceStart).split('\n').length - 1;
+                    const targetScrollTop = linesBefore * 22;
+                    xmlInput.scrollTop = targetScrollTop;
+                    highlightLayerInput.scrollTop = targetScrollTop;
+                }
+            }
+        }
+
+        function selectCodeMirrorRegion(sourceStart, sourceEnd) {
+            if (sourceStart !== undefined && sourceEnd !== undefined) {
+                xmlInput.focus();
+                xmlInput.setSelectionRange(sourceStart, sourceEnd);
+                highlightActiveScope();
+                
+                const xmlString = xmlInput.value;
+                const linesBefore = xmlString.substring(0, sourceStart).split('\n').length - 1;
+                const targetScrollTop = linesBefore * 22;
+                if (xmlInput.scrollTop > targetScrollTop || xmlInput.scrollTop + xmlInput.clientHeight < targetScrollTop + 40) {
+                    xmlInput.scrollTop = Math.max(0, targetScrollTop - 40);
+                    highlightLayerInput.scrollTop = xmlInput.scrollTop;
+                }
+            }
+        }
+
+        xpathInput.addEventListener('input', () => {
+            clearTimeout(xpathDebounceTimer);
+            xpathDebounceTimer = setTimeout(runXPathQuery, 300);
+        });
+
+        xmlInput.addEventListener('keydown', handleEditorShortcuts);
+        xmlInput.addEventListener('input', () => {
+            parseAndRenderTree('input');
+        });
+        xmlInput.addEventListener('keyup', highlightActiveScope);
+        xmlInput.addEventListener('click', highlightActiveScope);
+        
         document.getElementById('fileInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
             const reader = new FileReader();
             reader.onload = function(evt) {
                 xmlInput.value = evt.target.result;
-                parseAndRenderTree();
-                formatXML();
+                formatXML('input');
             };
             reader.readAsText(file);
         });
 
-        // Parse XML and update DOM visualization
-        function parseAndRenderTree() {
-            const xmlString = xmlInput.value.trim();
-            if (!xmlString) {
-                treeContainer.innerHTML = '<span class="text-gray-500 italic">No data to display.</span>';
+        function handleEditorShortcuts(e) {
+            const isCtrl = e.ctrlKey || e.metaKey;
+            const isAlt = e.altKey;
+
+            if (isCtrl && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                triggerGlobalUndo();
+                return;
+            }
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                document.execCommand('insertText', false, "  ");
+                parseAndRenderTree('input');
+                return;
+            }
+            if (isCtrl && !isAlt && e.key.toLowerCase() === 'd') {
+                e.preventDefault();
+                duplicateText(false, false);
+            }
+        }
+
+        function duplicateText(isDirectional, isUp) {
+            const val = xmlInput.value;
+            const start = xmlInput.selectionStart;
+            const end = xmlInput.selectionEnd;
+            if (start !== end) {
+                const targetText = val.substring(start, end);
+                xmlInput.setSelectionRange(end, end);
+                document.execCommand('insertText', false, targetText);
+                xmlInput.setSelectionRange(start, end);
+            } else {
+                const lineStart = val.lastIndexOf('\n', start - 1) + 1;
+                let lineEnd = val.indexOf('\n', start);
+                if (lineEnd === -1) lineEnd = val.length;
+                const lineContent = val.substring(lineStart, lineEnd);
+                xmlInput.setSelectionRange(lineEnd, lineEnd);
+                document.execCommand('insertText', false, '\n' + lineContent);
+                xmlInput.setSelectionRange(start + lineContent.length + 1, start + lineContent.length + 1);
+            }
+            parseAndRenderTree('input');
+        }
+
+        function toggleActionFields() {
+            const action = document.getElementById('massEditAction').value;
+            const nameInput = document.getElementById('massEditAttrName');
+            if (action === 'modifyText') {
+                nameInput.disabled = true;
+                nameInput.placeholder = "(Not Applicable)";
+                nameInput.value = "";
+            } else {
+                nameInput.disabled = false;
+                nameInput.placeholder = "Attr Name";
+            }
+        }
+
+        function loadSavedRulesPipeline() {
+            try {
+                const stored = localStorage.getItem('xml_automation_pipeline_rules');
+                rulesList = stored ? JSON.parse(stored) : [];
+                rulesList.forEach(r => { if (r.enabled === undefined) r.enabled = true; });
+            } catch(e) {
+                rulesList = [];
+            }
+            renderRulesPipelineUi();
+        }
+
+        function saveRulesPipelineToStorage() {
+            localStorage.setItem('xml_automation_pipeline_rules', JSON.stringify(rulesList));
+        }
+
+        function addNewRuleRow() {
+            rulesList.push({
+                id: Date.now() + Math.random().toString(36).substring(2, 7),
+                enabled: true,
+                xpath: '',
+                action: 'addAttr',
+                attrName: '',
+                value: ''
+            });
+            saveRulesPipelineToStorage();
+            renderRulesPipelineUi();
+        }
+
+        function deleteRuleRow(id, index) {
+            const ruleToBackup = rulesList.find(r => r.id === id);
+            if (ruleToBackup) {
+                deletedRulesStack.push({ rule: { ...ruleToBackup }, originalIndex: index });
+                ruleUndoAlert.classList.remove('hidden');
+                updateUndoButtonState();
+            }
+            rulesList = rulesList.filter(r => r.id !== id);
+            saveRulesPipelineToStorage();
+            renderRulesPipelineUi();
+        }
+
+        function undoRuleDeletion() {
+            if (deletedRulesStack.length === 0) return;
+            const recoveryPayload = deletedRulesStack.pop();
+            if (recoveryPayload) {
+                rulesList.splice(recoveryPayload.originalIndex, 0, recoveryPayload.rule);
+                saveRulesPipelineToStorage();
+                renderRulesPipelineUi();
+            }
+            if (deletedRulesStack.length === 0) {
+                ruleUndoAlert.classList.add('hidden');
+            }
+            updateUndoButtonState();
+        }
+
+        function shiftRulePosition(index, direction) {
+            const targetIndex = index + direction;
+            if (targetIndex < 0 || targetIndex >= rulesList.length) return;
+            const element = rulesList.splice(index, 1)[0];
+            rulesList.splice(targetIndex, 0, element);
+            saveRulesPipelineToStorage();
+            renderRulesPipelineUi();
+        }
+
+        function syncRuleFieldData(id, key, value) {
+            const rule = rulesList.find(r => r.id === id);
+            if (rule) {
+                rule[key] = value;
+                if (key === 'action') {
+                    const nameField = document.getElementById(`attrName-${id}`);
+                    if (value === 'modifyText') {
+                        nameField.disabled = true;
+                        nameField.value = '';
+                        rule.attrName = '';
+                    } else {
+                        nameField.disabled = false;
+                    }
+                }
+                saveRulesPipelineToStorage();
+            }
+        }
+
+        function renderRulesPipelineUi() {
+            if (rulesList.length === 0) {
+                rulesContainer.innerHTML = `<div class="text-xs text-gray-500 italic py-2 text-center bg-gray-900/40 rounded border border-dashed border-gray-880">No rules registered. Click "Add Rule" to begin.</div>`;
+                return;
+            }
+            rulesContainer.innerHTML = '';
+            rulesList.forEach((rule, idx) => {
+                const row = document.createElement('div');
+                row.className = `flex flex-wrap items-center bg-gray-900 border border-gray-700/80 rounded-lg p-2 gap-2 text-xs font-mono transition ${!rule.enabled ? 'opacity-50' : ''}`;
+                const isTextAction = rule.action === 'modifyText';
+                row.innerHTML = `
+                    <div class="flex items-center gap-2 shrink-0">
+                        <input type="checkbox" ${rule.enabled ? 'checked' : ''} onchange="syncRuleFieldData('${rule.id}', 'enabled', this.checked); renderRulesPipelineUi();" class="w-4 h-4 rounded bg-gray-950 border-gray-700 text-blue-500 focus:ring-0 cursor-pointer">
+                        <div class="flex items-center gap-0.5 text-gray-500 font-sans font-bold min-w-[45px]">
+                            <button onclick="shiftRulePosition(${idx}, -1)" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === 0 ? 'disabled' : ''}>▲</button>
+                            <button onclick="shiftRulePosition(${idx}, 1)" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === rulesList.length - 1 ? 'disabled' : ''}>▼</button>
+                            <span class="text-gray-400 ml-0.5">#${idx + 1}</span>
+                        </div>
+                    </div>
+                    <input type="text" value="${escapeHtml(rule.xpath)}" placeholder="XPath Statement" oninput="syncRuleFieldData('${rule.id}', 'xpath', this.value)" class="flex-2 min-w-[150px] bg-gray-950 border border-gray-800 rounded px-2 py-1 text-gray-200 focus:outline-none focus:border-blue-500">
+                    <select onchange="syncRuleFieldData('${rule.id}', 'action', this.value)" class="flex-1 min-w-[110px] bg-gray-950 border border-gray-800 rounded px-2 py-1 text-gray-300 focus:outline-none focus:border-blue-500">
+                        <option value="addAttr" ${rule.action === 'addAttr' ? 'selected' : ''}>Add Attribute</option>
+                        <option value="replaceAttr" ${rule.action === 'replaceAttr' ? 'selected' : ''}>Replace Attribute</option>
+                        <option value="removeAttr" ${rule.action === 'removeAttr' ? 'selected' : ''}>Remove Attribute</option>
+                        <option value="modifyText" ${rule.action === 'modifyText' ? 'selected' : ''}>Modify Inner Text</option>
+                    </select>
+                    <input type="text" id="attrName-${rule.id}" value="${escapeHtml(rule.attrName)}" placeholder="Attr Name" ${isTextAction ? 'disabled' : ''} oninput="syncRuleFieldData('${rule.id}', 'attrName', this.value)" class="flex-1 min-w-[80px] bg-gray-950 border border-gray-800 rounded px-2 py-1 text-gray-200 focus:outline-none focus:border-blue-500 disabled:opacity-30 disabled:placeholder-transparent">
+                    <input type="text" value="${escapeHtml(rule.value)}" placeholder="Value String" oninput="syncRuleFieldData('${rule.id}', 'value', this.value)" class="flex-1 min-w-[100px] bg-gray-950 border border-gray-800 rounded px-2 py-1 text-gray-200 focus:outline-none focus:border-blue-500">
+                    <div class="flex gap-1 ml-auto shrink-0 font-sans">
+                        <button onclick="executeSingleRule('${rule.id}')" class="bg-blue-900/60 hover:bg-blue-800/80 border border-blue-700/60 text-blue-300 px-2 py-1 rounded cursor-pointer transition font-medium">Run Rule</button>
+                        <button onclick="deleteRuleRow('${rule.id}', ${idx})" class="bg-red-950 hover:bg-red-900/60 border border-red-800/60 text-red-400 py-1 px-2 rounded cursor-pointer transition font-semibold">Remove</button>
+                    </div>
+                `;
+                rulesContainer.appendChild(row);
+            });
+        }
+
+        function executeSingleRule(id) {
+            const rule = rulesList.find(r => r.id === id);
+            if (!rule || !rule.xpath.trim() || !xmlInput.value.trim()) return;
+
+            const parser = new DOMParser();
+            let pipelineDoc = parser.parseFromString(xmlInput.value, "application/xml");
+            if (pipelineDoc.getElementsByTagName("parsererror")[0]) {
+                alert("Cannot evaluate ruleset. The Source XML contain invalid markup constraints.");
+                return;
+            }
+
+            try {
+                const result = pipelineDoc.evaluate(rule.xpath.trim(), pipelineDoc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                for (let i = 0; i < result.snapshotLength; i++) {
+                    let node = result.snapshotItem(i);
+                    if (node.nodeType === Node.ATTRIBUTE_NODE) node = node.ownerElement;
+                    if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
+                    if (node.nodeType !== Node.ELEMENT_NODE) continue;
+
+                    if (rule.action === 'addAttr' && rule.attrName.trim()) {
+                        node.setAttribute(rule.attrName.trim(), rule.value);
+                    } else if (rule.action === 'replaceAttr' && rule.attrName.trim()) {
+                        if (node.hasAttribute(rule.attrName.trim())) node.setAttribute(rule.attrName.trim(), rule.value);
+                    } else if (rule.action === 'removeAttr' && rule.attrName.trim()) {
+                        node.removeAttribute(rule.attrName.trim());
+                    } else if (rule.action === 'modifyText') {
+                        node.textContent = rule.value;
+                    }
+                }
+                const serializer = new XMLSerializer();
+                xmlOutput.value = serializer.serializeToString(pipelineDoc);
+                formatXML('output');
+                clearError();
+            } catch (err) {
+                showError(`Execution failure running standalone rule parameter block: ${err.message}`);
+            }
+        }
+
+        function executeRulesChain() {
+            if (!xmlInput.value.trim()) return;
+            const parser = new DOMParser();
+            let pipelineDoc = parser.parseFromString(xmlInput.value, "application/xml");
+            if (pipelineDoc.getElementsByTagName("parsererror")[0]) {
+                alert("Cannot process pipeline. The primary source XML contains structural formatting errors.");
+                return;
+            }
+
+            let processingSucceeded = true;
+            for (let idx = 0; idx < rulesList.length; idx++) {
+                const rule = rulesList[idx];
+                if (!rule.enabled || !rule.xpath.trim()) continue;
+                try {
+                    const result = pipelineDoc.evaluate(rule.xpath.trim(), pipelineDoc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                    for (let i = 0; i < result.snapshotLength; i++) {
+                        let node = result.snapshotItem(i);
+                        if (node.nodeType === Node.ATTRIBUTE_NODE) node = node.ownerElement;
+                        if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
+                        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+
+                        if (rule.action === 'addAttr' && rule.attrName.trim()) {
+                            node.setAttribute(rule.attrName.trim(), rule.value);
+                        } else if (rule.action === 'replaceAttr' && rule.attrName.trim()) {
+                            if (node.hasAttribute(rule.attrName.trim())) node.setAttribute(rule.attrName.trim(), rule.value);
+                        } else if (rule.action === 'removeAttr' && rule.attrName.trim()) {
+                            node.removeAttribute(rule.attrName.trim());
+                        } else if (rule.action === 'modifyText') {
+                            node.textContent = rule.value;
+                        }
+                    }
+                } catch (err) {
+                    showError(`Pipeline execution failure at rule step #${idx + 1}: ${err.message}`);
+                    processingSucceeded = false;
+                    break;
+                }
+            }
+            if (processingSucceeded) {
+                const serializer = new XMLSerializer();
+                xmlOutput.value = serializer.serializeToString(pipelineDoc);
+                formatXML('output');
+                clearError();
+            }
+        }
+
+        function exportRulesChain() {
+            if (rulesList.length === 0) {
+                alert("Pipeline array is completely vacant.");
+                return;
+            }
+            const blob = new Blob([JSON.stringify(rulesList, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'xml-transformation-rules.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function importRulesChain(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    if (Array.isArray(parsed)) {
+                        rulesList = parsed.map(item => ({
+                            id: item.id || (Date.now() + Math.random().toString(36).substring(2, 7)),
+                            enabled: item.enabled !== undefined ? item.enabled : true,
+                            xpath: item.xpath || '',
+                            action: item.action || 'addAttr',
+                            attrName: item.attrName || '',
+                            value: item.value || ''
+                        }));
+                        saveRulesPipelineToStorage();
+                        renderRulesPipelineUi();
+                    } else {
+                        alert("Malformed configuration file standard.");
+                    }
+                } catch(err) {
+                    alert("Failure parsing validation tokens: " + err.message);
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = ''; 
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        /* High-Contrast Split Color Diff Engine Tracing Rules Implementation */
+        function runDiffComparisonHighlighter() {
+            const outText = xmlOutput.value;
+            if (!outText.trim() || !nodeMapInput.size || !nodeMapOutput.size) {
+                highlightLayerOutput.textContent = outText;
+                return;
+            }
+
+            const { allTags: outTags } = parseHighlights(outText, -1);
+            let classes = new Array(outText.length).fill('');
+
+            for (let [outNode, outVisual] of nodeMapOutput.entries()) {
+                const outAbsPath = generateAbsoluteXPath(outNode);
+                let diffStatus = 'none'; // 'none' | 'added' | 'modified'
+
+                let matchedInNode = null;
+                for (let [inNode, inVisual] of nodeMapInput.entries()) {
+                    if (generateAbsoluteXPath(inNode) === outAbsPath) {
+                        matchedInNode = inNode;
+                        break;
+                    }
+                }
+
+                if (!matchedInNode) {
+                    diffStatus = 'added';
+                } else {
+                    const serializer = new XMLSerializer();
+                    if (serializer.serializeToString(matchedInNode) !== serializer.serializeToString(outNode)) {
+                        diffStatus = 'modified';
+                    }
+                }
+
+                // Apply dynamic contrast styling mapping to tree & code layout layers
+                if (diffStatus !== 'none' && outVisual.sourceStart !== undefined && outVisual.sourceEnd !== undefined) {
+                    const bgClass = diffStatus === 'added' ? 'diff-added-bg' : 'diff-modified-bg';
+                    const textClass = diffStatus === 'added' ? 'diff-added-text' : 'diff-modified-text';
+                    const labelBadge = diffStatus === 'added' ? ' [ADD]' : ' [MOD]';
+
+                    if (outVisual.container) {
+                        outVisual.container.classList.remove('diff-added-bg', 'diff-modified-bg');
+                        outVisual.container.classList.add(bgClass);
+                    }
+                    if (outVisual.tagNameSpan) {
+                        outVisual.tagNameSpan.classList.remove('diff-added-text', 'diff-modified-text');
+                        outVisual.tagNameSpan.classList.add(textClass);
+                        
+                        // Append metadata tag labels to elements inside the interactive DOM
+                        if (!outVisual.tagNameSpan.innerText.includes('[ADD]') && !outVisual.tagNameSpan.innerText.includes('[MOD]')) {
+                            outVisual.tagNameSpan.innerText += labelBadge;
+                        }
+                    }
+
+                    const bounds = outTags.find(t => t.start === outVisual.sourceStart);
+                    if (bounds) {
+                        for (let i = bounds.start; i < bounds.tagOpenEnd; i++) {
+                            classes[i] = bgClass;
+                        }
+                    }
+                }
+            }
+
+            let htmlOutput = "";
+            let currentClass = null;
+            for (let i = 0; i < outText.length; i++) {
+                let charClass = classes[i];
+                let char = outText[i];
+                let escapedChar = char === '<' ? '&lt;' : char === '>' ? '&gt;' : char === '&' ? '&amp;' : char;
+                if (charClass !== currentClass) {
+                    if (currentClass !== null) htmlOutput += "</span>";
+                    if (charClass !== '') htmlOutput += `<span class="${charClass}">`;
+                    currentClass = charClass;
+                }
+                htmlOutput += escapedChar;
+            }
+            if (currentClass !== null) htmlOutput += "</span>";
+            highlightLayerOutput.innerHTML = htmlOutput + "\n";
+        }
+
+        function parseAndRenderTree(targetWorkspace = 'input') {
+            const isInput = (targetWorkspace === 'input');
+            const targetTextArea = isInput ? xmlInput : xmlOutput;
+            const targetContainer = isInput ? treeContainerInput : treeContainerOutput;
+            const targetHighlightLayer = isInput ? highlightLayerInput : highlightLayerOutput;
+            const targetNodeMap = isInput ? nodeMapInput : nodeMapOutput;
+            
+            const xmlString = targetTextArea.value;
+            targetNodeMap.clear();
+
+            if (!xmlString.trim()) {
+                targetContainer.innerHTML = '<span class="text-gray-500 italic">No tracking context data generated.</span>';
+                targetHighlightLayer.innerHTML = "";
+                if (isInput) {
+                    xpathResultsContainer.innerHTML = '<div class="text-xs text-gray-500 italic">Provide a valid XPath expression above to compile isolated preview contexts.</div>';
+                } else {
+                    outputStatusIndicator.textContent = "Empty Workspace";
+                }
                 clearError();
                 return;
             }
 
             const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(xmlString, "application/xml");
-            const parserError = xmlDoc.getElementsByTagName("parsererror")[0];
+            const parsedDoc = parser.parseFromString(xmlString, "application/xml");
+            const parserError = parsedDoc.getElementsByTagName("parsererror")[0];
 
             if (parserError) {
-                showError(parserError.textContent);
+                if (isInput) showError(parserError.textContent);
                 return;
             }
 
-            clearError();
-            treeContainer.innerHTML = '';
-            // Render from root element node
-            treeContainer.appendChild(buildTreeNode(xmlDoc.documentElement));
+            if (isInput) {
+                currentXmlDoc = parsedDoc;
+                errorLog.classList.add('hidden');
+                xmlInput.classList.remove('error-glow');
+            } else {
+                outputXmlDoc = parsedDoc;
+                outputStatusIndicator.textContent = "Pipeline Output Active";
+            }
+            
+            targetContainer.innerHTML = '';
+            
+            const { allTags } = parseHighlights(xmlString, -1);
+            const rootNodeElement = buildTreeNode(parsedDoc.documentElement, false, allTags, [0], targetWorkspace);
+            if (rootNodeElement) {
+                targetContainer.appendChild(rootNodeElement);
+            }
+            
+            if (isInput) {
+                highlightActiveScope();
+                runXPathQuery();
+            } else {
+                runDiffComparisonHighlighter();
+            }
         }
 
-        // Recursively construct HTML node trees mirroring the XML structural elements
-        function buildTreeNode(node) {
+        function generateAbsoluteXPath(node) {
+            if (!node || node.nodeType === Node.DOCUMENT_NODE) return "";
+            if (node.nodeType === Node.ATTRIBUTE_NODE) {
+                return generateAbsoluteXPath(node.ownerElement) + `/@${node.nodeName}`;
+            }
+            let path = "";
+            let current = node;
+            while (current && current.nodeType === Node.ELEMENT_NODE) {
+                let index = 1;
+                let sibling = current.previousSibling;
+                while (sibling) {
+                    if (sibling.nodeType === Node.ELEMENT_NODE && sibling.tagName === current.tagName) index++;
+                    sibling = sibling.previousSibling;
+                }
+                let hasSucceedingSiblings = false;
+                let nextSibling = current.nextSibling;
+                while (nextSibling) {
+                    if (nextSibling.nodeType === Node.ELEMENT_NODE && nextSibling.tagName === current.tagName) {
+                        hasSucceedingSiblings = true;
+                        break;
+                    }
+                    nextSibling = nextSibling.nextSibling;
+                }
+                let segment = current.tagName;
+                if (index > 1 || hasSucceedingSiblings) segment += `[${index}]`;
+                path = "/" + segment + path;
+                current = current.parentNode;
+            }
+            return path;
+        }
+
+        function generateSimilarXPath(node) {
+            if (node.nodeType === Node.ATTRIBUTE_NODE) {
+                return `//${node.ownerElement.tagName}/@${node.nodeName}`;
+            }
+            if (node.nodeType !== Node.ELEMENT_NODE) return "";
+            let parent = node.parentNode;
+            if (!parent || parent.nodeType === Node.DOCUMENT_NODE) return `/${node.tagName}`;
+            return `//${parent.tagName}/${node.tagName}`;
+        }
+
+        function openNodeModal(node, attrName = null, workspaceSource = 'input') {
+            if (workspaceSource === 'output') return; 
+            activeSelectedNodeContext = node;
+            activeSelectedAttrContext = attrName;
+
+            const absPath = generateAbsoluteXPath(attrName ? node.getAttributeNode(attrName) : node);
+            const simPath = generateSimilarXPath(attrName ? node.getAttributeNode(attrName) : node);
+            
+            modalXPathAbsolute.value = absPath;
+            modalXPathSimilar.value = simPath;
+
+            if (attrName) {
+                modalNodeTitle.textContent = `@${attrName}`;
+                modalNodeType.textContent = "Attribute Node";
+                tagNameInputGroup.classList.remove('hidden');
+                textValueInputGroup.classList.remove('hidden');
+                xpathSimilarGroup.classList.remove('hidden');
+                document.querySelector('#tagNameInputGroup label').textContent = "Attribute Name";
+                modalTagName.value = attrName;
+                document.querySelector('#textValueInputGroup label').textContent = "Attribute Value";
+                modalTextValue.value = node.getAttribute(attrName);
+                modalDeleteBtn.classList.remove('hidden');
+            } else {
+                modalNodeTitle.textContent = `<${node.tagName}>`;
+                modalNodeType.textContent = "Element Node";
+                tagNameInputGroup.classList.remove('hidden');
+                document.querySelector('#tagNameInputGroup label').textContent = "Element Tag Name";
+                modalTagName.value = node.tagName;
+
+                let childText = "";
+                let hasElementChildren = false;
+                Array.from(node.childNodes).forEach(c => {
+                    if (c.nodeType === Node.TEXT_NODE) childText += c.nodeValue.trim();
+                    if (c.nodeType === Node.ELEMENT_NODE) hasElementChildren = true;
+                });
+
+                if (!hasElementChildren) {
+                    textValueInputGroup.classList.remove('hidden');
+                    document.querySelector('#textValueInputGroup label').textContent = "Inner Node Text";
+                    modalTextValue.value = childText;
+                } else {
+                    textValueInputGroup.classList.add('hidden');
+                }
+                xpathSimilarGroup.classList.remove('hidden');
+                if (node === node.ownerDocument.documentElement) {
+                    modalDeleteBtn.classList.add('hidden');
+                } else {
+                    modalDeleteBtn.classList.remove('hidden');
+                }
+            }
+            nodeModal.classList.remove('hidden');
+        }
+
+        function closeModal() {
+            nodeModal.classList.add('hidden');
+            activeSelectedNodeContext = null;
+            activeSelectedAttrContext = null;
+        }
+
+        function saveModalChanges() {
+            if (!activeSelectedNodeContext) return;
+            const doc = activeSelectedNodeContext.ownerDocument;
+
+            if (activeSelectedAttrContext) {
+                const newAttrName = modalTagName.value.trim();
+                const newAttrVal = modalTextValue.value;
+                if (!newAttrName) return;
+                activeSelectedNodeContext.removeAttribute(activeSelectedAttrContext);
+                activeSelectedNodeContext.setAttribute(newAttrName, newAttrVal);
+            } else {
+                const newTagName = modalTagName.value.trim();
+                if (!newTagName) return;
+                let workingNode = activeSelectedNodeContext;
+                if (newTagName !== activeSelectedNodeContext.tagName) {
+                    const newNode = doc.createElement(newTagName);
+                    Array.from(activeSelectedNodeContext.attributes).forEach(a => newNode.setAttribute(a.name, a.value));
+                    while (activeSelectedNodeContext.firstChild) newNode.appendChild(activeSelectedNodeContext.firstChild);
+                    activeSelectedNodeContext.parentNode.replaceChild(newNode, activeSelectedNodeContext);
+                    workingNode = newNode;
+                }
+                if (!textValueInputGroup.classList.contains('hidden')) {
+                    workingNode.textContent = modalTextValue.value;
+                }
+            }
+            updateSourceFromDOM(doc);
+            closeModal();
+        }
+
+        function deleteTargetNodeFromModal() {
+            if (!activeSelectedNodeContext) return;
+            const doc = activeSelectedNodeContext.ownerDocument;
+            if (activeSelectedAttrContext) {
+                activeSelectedNodeContext.removeAttribute(activeSelectedAttrContext);
+            } else {
+                if (activeSelectedNodeContext === doc.documentElement) return;
+                activeSelectedNodeContext.parentNode.removeChild(activeSelectedNodeContext);
+            }
+            updateSourceFromDOM(doc);
+            closeModal();
+        }
+
+        function copyXPathToSearch(elementId) {
+            const xpathVal = document.getElementById(elementId).value;
+            xpathInput.value = xpathVal;
+            runXPathQuery();
+            closeModal();
+            xpathInput.focus();
+        }
+
+        function buildTreeNode(node, isStaticPreview = false, allTags = [], trackingIndexRef = [0], workspaceSource = 'input') {
             if (node.nodeType !== Node.ELEMENT_NODE) return null;
 
             const elementContainer = document.createElement('div');
-            elementContainer.className = "ml-4 my-1 border-l border-gray-700/50 pl-3";
+            elementContainer.className = "ml-4 my-1 border-l border-gray-700/50 pl-3 transition-all duration-150";
 
-            // Header line containing tags and element configuration
             const tagLine = document.createElement('div');
-            tagLine.className = "flex flex-wrap items-center gap-1 py-0.5 text-blue-300";
+            tagLine.className = "flex flex-wrap items-center gap-1 py-0.5 text-blue-300 tree-row";
 
-            // Tag open tag notation
             const startTag = document.createElement('span');
             startTag.className = "text-gray-500 font-bold";
             startTag.textContent = "<";
             tagLine.appendChild(startTag);
 
-            // Node identity mapping
             const tagNameSpan = document.createElement('span');
-            tagNameSpan.className = "text-blue-400 font-medium hover:underline cursor-pointer";
+            tagNameSpan.className = "text-blue-400 font-medium px-1 rounded transition-all";
+            if (!isStaticPreview && workspaceSource === 'input') {
+                tagNameSpan.classList.add('hover:underline', 'cursor-pointer');
+                tagNameSpan.onclick = (e) => {
+                    e.stopPropagation();
+                    openNodeModal(node, null, workspaceSource);
+                };
+            }
             tagNameSpan.textContent = node.tagName;
-            tagNameSpan.onclick = () => {
-                const newTagName = prompt(`Change tag name details for "${node.tagName}":`, node.tagName);
-                if (newTagName && newTagName.trim()) {
-                    renameTag(node, newTagName.trim());
-                }
-            };
             tagLine.appendChild(tagNameSpan);
 
-            // Dynamically evaluate attributes inside current scope
+            let matchingTagData = null;
+            if (!isStaticPreview && allTags && allTags.length > 0) {
+                matchingTagData = allTags[trackingIndexRef[0]];
+                trackingIndexRef[0]++;
+            }
+
+            if (!isStaticPreview) {
+                const targetMap = (workspaceSource === 'input') ? nodeMapInput : nodeMapOutput;
+                targetMap.set(node, { 
+                    tagNameSpan: tagNameSpan, 
+                    container: elementContainer, 
+                    attributes: {},
+                    sourceStart: matchingTagData ? matchingTagData.start : 0,
+                    sourceEnd: matchingTagData ? matchingTagData.end : 0
+                });
+
+                if (workspaceSource === 'input') {
+                    tagLine.addEventListener('click', (e) => {
+                        if (e.target === tagLine || e.target === startTag || e.target === endTag) {
+                            selectCodeMirrorRegion(matchingTagData ? matchingTagData.start : 0, matchingTagData ? matchingTagData.end : 0);
+                        }
+                    });
+                }
+            }
+
             Array.from(node.attributes).forEach(attr => {
                 const attrSpan = document.createElement('span');
-                attrSpan.className = "ml-2 text-amber-400/90 text-xs cursor-pointer hover:bg-amber-500/10 rounded px-1";
+                attrSpan.className = "ml-2 text-amber-400/90 text-xs px-1 rounded transition-all";
+                if (!isStaticPreview && workspaceSource === 'input') {
+                    attrSpan.classList.add('cursor-pointer', 'hover:bg-amber-500/10');
+                    attrSpan.onclick = (e) => {
+                        e.stopPropagation();
+                        openNodeModal(node, attr.name, workspaceSource);
+                    };
+                }
                 attrSpan.textContent = `${attr.name}="${attr.value}"`;
-                attrSpan.onclick = (e) => {
-                    e.stopPropagation();
-                    const newVal = prompt(`Update attribute [${attr.name}] value:`, attr.value);
-                    if (newVal !== null) {
-                        node.setAttribute(attr.name, newVal);
-                        updateSourceFromDOM(node.ownerDocument);
-                    }
-                };
                 tagLine.appendChild(attrSpan);
+                if (!isStaticPreview) {
+                    const targetMap = (workspaceSource === 'input') ? nodeMapInput : nodeMapOutput;
+                    targetMap.get(node).attributes[attr.name] = attrSpan;
+                }
             });
 
-            // Action Add Feature Attribute Trigger Button
-            const addAttrBtn = document.createElement('button');
-            addAttrBtn.textContent = "+attr";
-            addAttrBtn.className = "ml-2 opacity-0 hover:opacity-100 text-[10px] bg-gray-700 text-gray-300 px-1 rounded cursor-pointer transition";
-            addAttrBtn.onclick = (e) => {
-                e.stopPropagation();
-                const name = prompt("Enter new attribute name:");
-                if (!name) return;
-                const val = prompt(`Enter value for attribute "${name}":`);
-                node.setAttribute(name, val || "");
-                updateSourceFromDOM(node.ownerDocument);
-            };
-            tagLine.appendChild(addAttrBtn);
+            if (!isStaticPreview && workspaceSource === 'input') {
+                const addAttrBtn = document.createElement('button');
+                addAttrBtn.textContent = "+attr";
+                addAttrBtn.className = "ml-2 opacity-0 hover:opacity-100 text-[10px] bg-gray-700 text-gray-300 px-1 rounded cursor-pointer transition";
+                addAttrBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    const name = prompt("Enter new attribute name:");
+                    if (!name) return;
+                    const val = prompt(`Enter value for "${name}":`);
+                    node.setAttribute(name, val || "");
+                    updateSourceFromDOM(node.ownerDocument);
+                };
+                tagLine.appendChild(addAttrBtn);
+            }
 
             const endTag = document.createElement('span');
             endTag.className = "text-gray-500 font-bold";
             endTag.textContent = ">";
             tagLine.appendChild(endTag);
 
-            // Render direct inline text contents cleanly
-            let textChild = null;
+            let textContent = "";
             let hasElementChildren = false;
 
             Array.from(node.childNodes).forEach(child => {
-                if (child.nodeType === Node.TEXT_NODE && child.nodeValue.trim()) {
-                    textChild = child;
-                } else if (child.nodeType === Node.ELEMENT_NODE) {
-                    hasElementChildren = true;
-                }
+                if (child.nodeType === Node.TEXT_NODE) textContent += child.nodeValue.trim();
+                else if (child.nodeType === Node.ELEMENT_NODE) hasElementChildren = true;
             });
 
-            if (textChild && !hasElementChildren) {
+            if (textContent && !hasElementChildren) {
                 const valSpan = document.createElement('span');
-                valSpan.className = "mx-1 text-emerald-300 font-sans cursor-pointer hover:underline bg-emerald-500/5 px-1 rounded";
-                valSpan.textContent = textChild.nodeValue;
-                valSpan.onclick = (e) => {
-                    e.stopPropagation();
-                    const newVal = prompt(`Modify text contents of <${node.tagName}>:`, textChild.nodeValue);
-                    if (newVal !== null) {
-                        textChild.nodeValue = newVal;
-                        updateSourceFromDOM(node.ownerDocument);
-                    }
-                };
+                valSpan.className = "mx-1 text-emerald-300 font-sans px-1 rounded transition-all";
+                if (!isStaticPreview && workspaceSource === 'input') {
+                    valSpan.classList.add('cursor-pointer', 'hover:underline', 'bg-emerald-500/5');
+                    valSpan.onclick = (e) => {
+                        e.stopPropagation();
+                        openNodeModal(node, null, workspaceSource);
+                    };
+                }
+                valSpan.textContent = textContent;
                 tagLine.appendChild(valSpan);
             }
 
             elementContainer.appendChild(tagLine);
 
-            // Render embedded child markup trees
             if (hasElementChildren) {
                 Array.from(node.childNodes).forEach(child => {
-                    const childMarkup = buildTreeNode(child);
+                    const childMarkup = buildTreeNode(child, isStaticPreview, allTags, trackingIndexRef, workspaceSource);
                     if (childMarkup) elementContainer.appendChild(childMarkup);
                 });
-            }
-
-            // Append closing tag structural text markers visually if elements contain nesting
-            if (hasElementChildren) {
                 const closeTagLine = document.createElement('div');
-                closeTagLine.className = "text-gray-500 font-bold py-0.5";
+                closeTagLine.className = "text-gray-500 font-bold py-0.5 tree-row";
                 closeTagLine.textContent = `</${node.tagName}>`;
+                
+                if (!isStaticPreview && workspaceSource === 'input') {
+                    closeTagLine.addEventListener('click', (e) => {
+                        if (e.target === closeTagLine) {
+                            selectCodeMirrorRegion(matchingTagData ? matchingTagData.start : 0, matchingTagData ? matchingTagData.end : 0);
+                        }
+                    });
+                }
                 elementContainer.appendChild(closeTagLine);
-            } else if (!textChild) {
-                // Self closing normalization visualization if completely empty element
+            } else if (!textContent) {
                 endTag.textContent = " />";
             } else {
                 const closeInline = document.createElement('span');
@@ -235,97 +1207,366 @@
             return elementContainer;
         }
 
-        // Apply changes back upstream to raw layout text representation output window
+        function runXPathQuery() {
+            document.querySelectorAll('.query-match').forEach(el => el.classList.remove('query-match'));
+            xpathResultsContainer.innerHTML = '';
+            activeLastMatchedSnapshotRawText = "";
+            
+            const expr = xpathInput.value.trim();
+            if (!expr || !currentXmlDoc) {
+                xpathResultsContainer.innerHTML = '<div class="text-xs text-gray-500 italic">Provide a valid XPath expression above to compile isolated preview contexts.</div>';
+                updateStatusLabel(true, 0);
+                return;
+            }
+
+            try {
+                const result = currentXmlDoc.evaluate(expr, currentXmlDoc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                const totalMatches = result.snapshotLength;
+
+                if (totalMatches === 0) {
+                    xpathResultsContainer.innerHTML = '<div class="text-xs text-amber-500 italic">No node selections matches were evaluated.</div>';
+                    updateStatusLabel(true, 0);
+                    return;
+                }
+
+                const serializer = new XMLSerializer();
+                let collectedTextAccumulator = "";
+                const previewWrapperFrame = document.createElement('div');
+                previewWrapperFrame.className = "flex flex-col gap-4";
+
+                for (let i = 0; i < totalMatches; i++) {
+                    const node = result.snapshotItem(i);
+                    let targetEl = node;
+                    
+                    if (node.nodeType === Node.ATTRIBUTE_NODE) targetEl = node.ownerElement;
+                    if (node.nodeType === Node.TEXT_NODE) targetEl = node.parentNode;
+
+                    if (targetEl && targetEl.nodeType === Node.ELEMENT_NODE) {
+                        const visual = nodeMapInput.get(targetEl);
+                        if (visual) visual.tagNameSpan.classList.add('query-match');
+                    }
+
+                    collectedTextAccumulator += serializer.serializeToString(node) + "\n";
+
+                    const itemResultCard = document.createElement('div');
+                    itemResultCard.className = "bg-gray-900/50 p-3 rounded-lg border border-gray-880 relative";
+                    
+                    const itemLabelIndex = document.createElement('span');
+                    itemLabelIndex.className = "absolute top-2 right-2 font-sans font-bold text-[10px] bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded";
+                    itemLabelIndex.textContent = `Match [${i + 1}]`;
+                    itemResultCard.appendChild(itemLabelIndex);
+
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        const compiledNodeMarkup = buildTreeNode(node.cloneNode(true), true);
+                        if (compiledNodeMarkup) itemResultCard.appendChild(compiledNodeMarkup);
+                    } else if (node.nodeType === Node.ATTRIBUTE_NODE) {
+                        const attrTextLine = document.createElement('div');
+                        attrTextLine.className = "text-amber-400 font-mono text-xs p-1";
+                        attrTextLine.textContent = `@${node.nodeName}="${node.nodeValue}"`;
+                        itemResultCard.appendChild(attrTextLine);
+                    } else if (node.nodeType === Node.TEXT_NODE) {
+                        const mixedTextLine = document.createElement('div');
+                        mixedTextLine.className = "text-emerald-400 font-sans text-xs italic p-1";
+                        mixedTextLine.textContent = `"${node.nodeValue}"`;
+                        itemResultCard.appendChild(mixedTextLine);
+                    }
+                    previewWrapperFrame.appendChild(itemResultCard);
+                }
+
+                activeLastMatchedSnapshotRawText = collectedTextAccumulator.trim();
+                xpathResultsContainer.appendChild(previewWrapperFrame);
+                updateStatusLabel(true, totalMatches);
+                
+                errorLog.classList.add('hidden');
+                xmlInput.classList.remove('error-glow');
+            } catch (err) {
+                xpathResultsContainer.innerHTML = `<div class="text-xs text-red-400 font-mono">XPath Compilation Syntax Error: ${err.message}</div>`;
+                updateStatusLabel(false, 0);
+            }
+        }
+
+        function updateStatusLabel(isValidParse, nodeCount) {
+            if (!isValidParse) {
+                statusIndicator.innerHTML = '<span class="h-2 w-2 rounded-full bg-amber-500"></span> Evaluating expression...';
+                statusIndicator.className = "text-xs text-amber-400 flex items-center gap-1";
+                return;
+            }
+            if (nodeCount > 0) {
+                statusIndicator.innerHTML = `<span class="h-2 w-2 rounded-full bg-blue-400"></span> Found ${nodeCount} Nodes`;
+                statusIndicator.className = "text-xs text-blue-400 flex items-center gap-1 font-bold";
+            } else {
+                statusIndicator.innerHTML = '<span class="h-2 w-2 rounded-full bg-emerald-400"></span> Input OK';
+                statusIndicator.className = "text-xs text-emerald-400 flex items-center gap-1";
+            }
+        }
+
+        function copyXPathResultsAsText() {
+            if (!activeLastMatchedSnapshotRawText) {
+                alert("The preview buffer contains no active nodes to extract.");
+                return;
+            }
+            navigator.clipboard.writeText(activeLastMatchedSnapshotRawText).then(() => {
+                alert("Copied directly to clipboard!");
+            }).catch(err => {
+                alert("Clipboard assignment failed: " + err.message);
+            });
+        }
+
+        function applyMassEdit() {
+            const expr = xpathInput.value.trim();
+            if (!expr) {
+                alert("Please provide an XPath statement to isolate target items.");
+                return;
+            }
+            if (!currentXmlDoc) return;
+            try {
+                const result = currentXmlDoc.evaluate(expr, currentXmlDoc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                if (result.snapshotLength === 0) {
+                    alert("No elements were returned by the specified query.");
+                    return;
+                }
+                const action = document.getElementById('massEditAction').value;
+                const attrName = document.getElementById('massEditAttrName').value.trim();
+                const newVal = document.getElementById('massEditValue').value;
+
+                for (let i = 0; i < result.snapshotLength; i++) {
+                    let node = result.snapshotItem(i);
+                    if (node.nodeType === Node.ATTRIBUTE_NODE) node = node.ownerElement;
+                    if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
+                    if (node.nodeType !== Node.ELEMENT_NODE) continue;
+
+                    if (action === 'addAttr' && attrName) {
+                        node.setAttribute(attrName, newVal);
+                    } else if (action === 'replaceAttr' && attrName) {
+                        if (node.hasAttribute(attrName)) node.setAttribute(attrName, newVal);
+                    } else if (action === 'removeAttr' && attrName) {
+                        node.removeAttribute(attrName);
+                    } else if (action === 'modifyText') {
+                        node.textContent = newVal;
+                    }
+                }
+                updateSourceFromDOM(currentXmlDoc);
+            } catch (err) {
+                showError(`Mass Edit Execution Error: ${err.message}`);
+            }
+        }
+
+        function parseHighlights(xmlString, cursorPosition) {
+            const tagRegex = /<(\/)?([a-zA-Z0-9_:-]+)([^>]*?)(\/)?>/g;
+            let match;
+            let stack = [];
+            let currentCounts = {};
+            let allTags = [];
+
+            while ((match = tagRegex.exec(xmlString)) !== null) {
+                let isClose = !!match[1];
+                let tagName = match[2];
+                let rawAttributesString = match[3];
+                let isSelfClosing = !!match[4] || rawAttributesString.endsWith('/');
+                let tagStart = match.index;
+                let tagEnd = tagRegex.lastIndex;
+
+                if (isClose) {
+                    if (stack.length > 0) {
+                        let opened = stack.pop();
+                        currentCounts = stack.length > 0 ? stack[stack.length - 1].counts : {};
+                        opened.end = tagEnd;
+                    }
+                } else {
+                    let indexAtLevel = currentCounts[tagName] || 0;
+                    currentCounts[tagName] = indexAtLevel + 1;
+                    let item = { 
+                        tagName: tagName, 
+                        start: tagStart, 
+                        end: isSelfClosing ? tagEnd : xmlString.length, 
+                        index: indexAtLevel, 
+                        counts: {},
+                        attributesString: rawAttributesString,
+                        isSelfClosing: isSelfClosing,
+                        tagOpenEnd: tagEnd
+                    };
+                    allTags.push(item);
+                    if (!isSelfClosing) {
+                        stack.push(item);
+                        currentCounts = item.counts;
+                    }
+                }
+            }
+
+            let activeTarget = null;
+            let activeAttribute = null;
+
+            for (let tag of allTags) {
+                if (cursorPosition >= tag.start && cursorPosition <= tag.tagOpenEnd) {
+                    activeTarget = tag;
+                    let attrRegex = /([a-zA-Z0-9_:-]+)\s*=\s*(['"])(.*?)\2/g;
+                    let attrMatch;
+                    let innerOffset = cursorPosition - tag.start;
+                    let tagRawText = xmlString.substring(tag.start, tag.tagOpenEnd);
+                    while ((attrMatch = attrRegex.exec(tagRawText)) !== null) {
+                        let matchStart = attrMatch.index;
+                        let matchEnd = attrRegex.lastIndex;
+                        if (innerOffset >= matchStart && innerOffset <= matchEnd) {
+                            activeAttribute = attrMatch[1];
+                            break;
+                        }
+                    }
+                    break;
+                } else if (cursorPosition > tag.tagOpenEnd && cursorPosition < tag.end) {
+                    if (!activeTarget || (tag.start > activeTarget.start)) activeTarget = tag;
+                }
+            }
+
+            let path = [];
+            let current = activeTarget;
+            while (current) {
+                path.unshift(current);
+                current = allTags.find(t => t.start < current.start && t.end > current.end && !t.isSelfClosing && 
+                    (allTags.filter(parentCandidate => parentCandidate.start < current.start && parentCandidate.end > current.end && parentCandidate.start > t.start).length === 0)
+                );
+            }
+            return { path, attributeName: activeAttribute, allTags };
+        }
+
+        function findTargetDOMNode(xmlDoc, path) {
+            if (!path || path.length === 0) return null;
+            let current = xmlDoc.documentElement;
+            if (!current || current.tagName !== path[0].tagName) return null;
+            for (let i = 1; i < path.length; i++) {
+                let step = path[i];
+                let childrenWithTagName = Array.from(current.children).filter(c => c.tagName === step.tagName);
+                if (childrenWithTagName[step.index]) current = childrenWithTagName[step.index];
+                else return null;
+            }
+            return current;
+        }
+
+        function updateTextareaHighlight(xmlString, activeElements, workspaceTarget = 'input') {
+            const targetPre = (workspaceTarget === 'input') ? highlightLayerInput : highlightLayerOutput;
+            if (!activeElements || activeElements.length === 0) {
+                targetPre.textContent = xmlString;
+                return;
+            }
+            let classes = new Array(xmlString.length).fill('');
+            activeElements.forEach((el, index) => {
+                let isTarget = (index === activeElements.length - 1);
+                let startIdx = el.start;
+                let endIdx = el.end || xmlString.length;
+                for (let i = startIdx; i < endIdx; i++) {
+                    classes[i] = isTarget ? 'source-highlight-target' : 'source-highlight-ancestor';
+                }
+            });
+            let htmlOutput = "";
+            let currentClass = null;
+            for (let i = 0; i < xmlString.length; i++) {
+                let charClass = classes[i];
+                let char = xmlString[i];
+                let escapedChar = char === '<' ? '&lt;' : char === '>' ? '&gt;' : char === '&' ? '&amp;' : char;
+                if (charClass !== currentClass) {
+                    if (currentClass !== null) htmlOutput += "</span>";
+                    if (charClass !== '') htmlOutput += `<span class="${charClass}">`;
+                    currentClass = charClass;
+                }
+                htmlOutput += escapedChar;
+            }
+            if (currentClass !== null) htmlOutput += "</span>";
+            targetPre.innerHTML = htmlOutput + "\n";
+        }
+
+        function highlightActiveScope() {
+            if (document.getElementById('view-panel-inspector').classList.contains('hidden')) return;
+
+            document.querySelectorAll('.highlight-target').forEach(el => el.classList.remove('highlight-target'));
+            document.querySelectorAll('.highlight-ancestor').forEach(el => el.classList.remove('highlight-ancestor'));
+
+            const xmlString = xmlInput.value;
+            const cursorPosition = xmlInput.selectionStart;
+            const { path, attributeName } = parseHighlights(xmlString, cursorPosition);
+            updateTextareaHighlight(xmlString, path, 'input');
+
+            if (!currentXmlDoc || !path || path.length === 0) return;
+            const targetNode = findTargetDOMNode(currentXmlDoc, path);
+            if (!targetNode) return;
+
+            let currentNode = targetNode;
+            let isImmediateTarget = true;
+            while (currentNode && currentNode.nodeType === Node.ELEMENT_NODE) {
+                const visualElements = nodeMapInput.get(currentNode);
+                if (visualElements) {
+                    if (isImmediateTarget) {
+                        if (attributeName && visualElements.attributes[attributeName]) {
+                            visualElements.attributes[attributeName].classList.add('highlight-target');
+                        } else {
+                            visualElements.tagNameSpan.classList.add('highlight-target');
+                        }
+                        isImmediateTarget = false;
+                    }
+                    visualElements.container.classList.add('highlight-ancestor');
+                }
+                currentNode = currentNode.parentNode;
+            }
+        }
+
         function updateSourceFromDOM(doc) {
             const serializer = new XMLSerializer();
             xmlInput.value = serializer.serializeToString(doc);
-            formatXML();
+            formatXML('input');
         }
 
-        // Safely map modified nodes into newly defined XML structure elements
-        function renameTag(node, newName) {
-            const doc = node.ownerDocument;
-            const newNode = doc.createElement(newName);
+        function formatXML(targetWorkspace = 'input') {
+            const targetTextArea = (targetWorkspace === 'input') ? xmlInput : xmlOutput;
+            const xmlString = targetTextArea.value.trim();
+            if(!xmlString) return;
             
-            // Move configurations
-            Array.from(node.attributes).forEach(attr => newNode.setAttribute(attr.name, attr.value));
-            while (node.firstChild) {
-                newNode.appendChild(node.firstChild);
-            }
-            
-            node.parentNode.replaceChild(newNode, node);
-            updateSourceFromDOM(doc);
-        }
-
-        // Structural Formatting engine rules
-        function formatXML() {
-            const xmlString = xmlInput.value.trim();
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString(xmlString, "application/xml");
-            
             if (xmlDoc.getElementsByTagName("parsererror")[0]) return;
 
-            let formatted = '';
-            let indent = '';
-            const tab = '  '; // Two space spacing standard tabs
-
-            // Explode elements via regex string manipulation arrays cleanly
-            const arr = xmlString.replace(/>\s*</g, '><').replace(/</g, '\r\n<').split('\r\n');
-            
-            arr.forEach(node => {
-                if (node.match(/^\/\*/)) {
-                    formatted += indent + node + '\r\n';
-                } else if (node.match(/^<\/\w/)) {
-                    // Node structural close tracking logic decreases steps
-                    indent = indent.substring(tab.length);
-                    formatted += indent + node + '\r\n';
-                } else if (node.match(/^<\w[^>]*[^\/]>.*$/)) {
-                    // Normal elements tracking
-                    formatted += indent + node + '\r\n';
-                    if (!node.match(/^<\w[^>]*\/>/) && !node.match(/<\/.*>$/)) {
-                        indent += tab;
-                    }
-                } else if (node.match(/^<\w[^>]*\/>/)) {
-                    formatted += indent + node + '\r\n';
-                } else {
-                    formatted += indent + node + '\r\n';
+            function formatNode(node, level = 0) {
+                const indent = "   ".repeat(level);
+                if (node.nodeType === Node.TEXT_NODE) {
+                    const txt = node.nodeValue.trim();
+                    return txt ? indent + txt + "\n" : "";
                 }
-            });
-
-            xmlInput.value = formatted.trim();
-            parseAndRenderTree();
+                if (node.nodeType !== Node.ELEMENT_NODE) return "";
+                let attrs = "";
+                Array.from(node.attributes).forEach(attr => { attrs += ` ${attr.name}="${attr.value}"`; });
+                let hasXmlElements = false;
+                let textVal = "";
+                Array.from(node.childNodes).forEach(c => {
+                    if (c.nodeType === Node.ELEMENT_NODE) hasXmlElements = true;
+                    if (c.nodeType === Node.TEXT_NODE) textVal += c.nodeValue.trim();
+                });
+                if (node.childNodes.length === 0) return `${indent}<${node.tagName}${attrs} />\n`;
+                if (!hasXmlElements) return `${indent}<${node.tagName}${attrs}>${textVal}</${node.tagName}>\n`;
+                let output = `${indent}<${node.tagName}${attrs}>\n`;
+                Array.from(node.childNodes).forEach(child => { output += formatNode(child, level + 1); });
+                output += `${indent}</${node.tagName}>\n`;
+                return output;
+            }
+            targetTextArea.value = formatNode(xmlDoc.documentElement).trim();
+            parseAndRenderTree(targetWorkspace);
         }
 
-        // Compact strings by parsing layout lines cleanly
-        function minifyXML() {
-            const xmlString = xmlInput.value.trim();
+        function minifyXML(targetWorkspace = 'input') {
+            const targetTextArea = (targetWorkspace === 'input') ? xmlInput : xmlOutput;
+            const xmlString = targetTextArea.value.trim();
+            if(!xmlString) return;
+            
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString(xmlString, "application/xml");
-            
             if (xmlDoc.getElementsByTagName("parsererror")[0]) return;
-
+            const walker = xmlDoc.createTreeWalker(xmlDoc.documentElement, NodeFilter.SHOW_TEXT);
+            const textNodes = [];
+            while(walker.nextNode()) textNodes.push(walker.currentNode);
+            textNodes.forEach(n => { if(!n.nodeValue.trim()) n.parentNode.removeChild(n); });
             const serializer = new XMLSerializer();
-            const serialized = serializer.serializeToString(xmlDoc);
-            xmlInput.value = serialized.replace(/>\s*</g, '><').trim();
-            parseAndRenderTree();
+            targetTextArea.value = serializer.serializeToString(xmlDoc).replace(/>\s*</g, '><').trim();
+            parseAndRenderTree(targetWorkspace);
         }
 
-        // Build data stream payloads downloading as native standalone filesystem elements
-        function downloadXML() {
-            const blob = new Blob([xmlInput.value], { type: 'application/xml' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'document.xml';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
-
-        // Error handling routines
         function showError(msg) {
-            errorLog.textContent = `XML Syntax Error: ${msg.split('\n')[0]}`;
+            errorLog.textContent = `XML Syntax/Query Error: ${msg.split('\n')[0]}`;
             errorLog.classList.remove('hidden');
             xmlInput.classList.add('error-glow');
             statusIndicator.innerHTML = '<span class="h-2 w-2 rounded-full bg-red-500"></span> Error Found';
@@ -335,13 +1576,29 @@
         function clearError() {
             errorLog.classList.add('hidden');
             xmlInput.classList.remove('error-glow');
-            statusIndicator.innerHTML = '<span class="h-2 w-2 rounded-full bg-emerald-400"></span> Parsing OK';
-            statusIndicator.className = "text-xs text-emerald-400 flex items-center gap-1";
+            parseAndRenderTree('input');
         }
 
-        // Initialize view mapping pipeline
-        parseAndRenderTree();
-        formatXML();
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !nodeModal.classList.contains('hidden')) closeModal();
+        });
+
+        function downloadXML() {
+            const outputVal = xmlOutput.value || xmlInput.value;
+            const blob = new Blob([outputVal], { type: 'application/xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'transformed-document.xml';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        loadSavedRulesPipeline();
+        parseAndRenderTree('input');
+        parseAndRenderTree('output');
     </script>
 </body>
 </html>
