@@ -1160,6 +1160,14 @@
             }
             return path;
         }
+		
+        function copyXPathToSearch(elementId) {
+            const xpathVal = document.getElementById(elementId).value;
+            xpathInput.value = xpathVal;
+            runXPathQuery();
+            closeModal();
+            xpathInput.focus();
+        }
 
         function buildTreeNode(node, isStaticPreview = false, allTags = [], trackingIndexRef = [0], workspaceSource = 'input') {
             if (node.nodeType !== Node.ELEMENT_NODE) return null;
