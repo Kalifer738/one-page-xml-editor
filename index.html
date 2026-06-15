@@ -18,8 +18,8 @@
             overflow-wrap: normal !important;
         }
 
-        .highlight-target { background-color: rgba(59, 130, 246, 0.35) !important; color: #60a5fa !important; border-radius: 4px; }
-        .highlight-ancestor { background-color: rgba(59, 130, 246, 0.04); border-left-color: #3b82f6 !important; }
+        .highlight-target { background-color: rgba(42, 118, 241, 0.493) !important; color: #60a5fa !important; border-radius: 4px; }
+        .highlight-ancestor { background-color: rgba(59, 57, 221, 0.014); border-left-color: #3b83f691 !important; }
         
         .source-highlight-target { background-color: rgba(59, 130, 246, 0.25); }
         .source-highlight-ancestor { background-color: rgba(59, 130, 246, 0.06); }
@@ -38,6 +38,14 @@
 
         .tree-row { cursor: pointer; transition: background-color 100ms; }
         .tree-row:hover { background-color: rgba(255, 255, 255, 0.02); }
+
+        /* Highlight rows that are drop targets */
+        .tree-row.drop-inside-highlight:hover {
+            background-color: rgba(59, 130, 246, 0.2);
+        }
+
+        /* Status Icons */
+        .status-icon:hover .tooltip { display: block; }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col font-sans relative">
@@ -100,17 +108,21 @@
                     </div>
                 </div>
                 <div class="flex flex-col gap-2">
-                    <label class="text-xs font-semibold uppercase tracking-wider text-gray-400">Batch Transformation Workbench (Applies to Input)</label>
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        <select id="massEditAction" onchange="toggleActionFields()" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-2 text-sm text-gray-300 focus:outline-none focus:border-blue-500">
+                    <div class="flex items-center gap-2">
+                        <label class="text-xs font-semibold uppercase tracking-wider text-gray-400">Batch Transformation Workbench (Applies to Input)</label>
+                        <button onclick="openHelpModal()" title="Help with tokens" class="text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold transition cursor-pointer">?</button>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-2">
+                        <select id="massEditAction" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-2 text-sm text-gray-300 focus:outline-none focus:border-blue-500 shrink-0">
                             <option value="addAttr">Add Attribute</option>
                             <option value="removeAttr">Remove Attribute</option>
                             <option value="modifyAttr">Modify Attribute Value</option>
                             <option value="modifyText">Modify Node Text</option>
+                            <option value="addNode">Add New Child Node</option>
                         </select>
-                        <input type="text" id="massEditAttrName" placeholder="Attr Name" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-2 text-sm font-mono text-gray-200 focus:outline-none focus:border-blue-500">
-                        <input type="text" id="massEditValue" placeholder="New Value" class="bg-gray-950 border border-gray-700 rounded-lg px-2 py-2 text-sm font-mono text-gray-200 focus:outline-none focus:border-blue-500">
-                        <button onclick="applyMassEdit()" class="bg-red-600 hover:bg-red-500 text-sm font-medium py-2 px-2 rounded-lg transition cursor-pointer truncate">
+                        <input type="text" id="massEditAttrName" placeholder="Attribute Name (Tokens ok)" class="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-2 py-2 text-sm font-mono text-blue-400 focus:outline-none focus:border-blue-500">
+                        <input type="text" id="massEditValue" placeholder="Expression Value / raw XML" class="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-2 py-2 text-sm font-mono text-emerald-400 focus:outline-none focus:border-blue-500">
+                        <button onclick="applyMassEdit()" class="bg-red-600 hover:bg-red-500 text-sm font-medium py-2 px-3 rounded-lg transition cursor-pointer truncate shrink-0 shadow">
                             ⚙️ Apply Change
                         </button>
                     </div>
@@ -127,7 +139,7 @@
                             <span class="h-2 w-2 rounded-full bg-emerald-400"></span> Input OK
                         </span>
                         <button id="undoInputBtn" onclick="undoInput()" disabled class="bg-gray-700 hover:bg-gray-600 border border-gray-600 disabled:opacity-45 disabled:cursor-not-allowed text-[11px] text-amber-400 py-0.5 px-2 rounded transition cursor-pointer font-medium">
-                            ↩️ Undo (Ctrl+Z)
+                            ↩️ Undo Change
                         </button>
                     </div>
                 </div>
@@ -150,8 +162,8 @@
             </div>
 
             <div class="flex flex-col bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-xl h-full">
-                <div class="bg-gray-850 px-4 py-2 border-b border-gray-700 flex justify-between items-center shrink-0">
-                    <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Input DOM Tree</span>
+                <div class="bg-gray-850 px-4 py-2 border-b border-gray-700 flex justify-between items-center shrink-0 select-none">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Input DOM Tree (Click & Hold Name to Drag & Drop Reorganize)</span>
                 </div>
                 <div id="treeContainerInput" class="flex-1 p-6 overflow-y-auto font-mono text-sm bg-gray-900 selection:bg-blue-500/30"></div>
             </div>
@@ -166,8 +178,9 @@
                 <div class="bg-gray-850 px-4 py-2 border-b border-gray-700 flex justify-between items-center shrink-0">
                     <div class="flex items-center gap-2">
                         <span class="text-xs font-semibold uppercase tracking-wider text-gray-300">Sequential Rules Pipeline</span>
+                        <button onclick="openHelpModal()" title="Help with tokens" class="text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold transition cursor-pointer">?</button>
                         <div id="ruleUndoAlert" class="hidden text-[10px] bg-amber-950/80 text-amber-300 border border-amber-800/80 px-2 py-0.5 rounded flex items-center gap-1">
-                            <span>Row deleted.</span>
+                            <span>Item deleted.</span>
                             <button onclick="undoRuleDeletion()" class="underline font-bold text-amber-200 hover:text-white cursor-pointer">Restore (Ctrl+Z)</button>
                         </div>
                     </div>
@@ -178,6 +191,9 @@
                         </button>
                         <button onclick="exportRulesChain()" class="bg-gray-700 hover:bg-gray-600 text-[11px] font-medium py-1 px-2 rounded border border-gray-600 transition cursor-pointer">
                             📤 Export
+                        </button>
+                        <button onclick="addNewGroupRow()" class="bg-indigo-600 hover:bg-indigo-500 text-[11px] font-bold py-1 px-2 rounded transition cursor-pointer">
+                            📁 Group
                         </button>
                         <button onclick="addNewRuleRow()" class="bg-blue-600 hover:bg-blue-500 text-[11px] font-bold py-1 px-2 rounded transition cursor-pointer">
                             ➕ Rule
@@ -194,9 +210,14 @@
             <div class="flex flex-col bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-xl h-full">
                 <div class="bg-gray-850 px-4 py-2 border-b border-gray-700 flex justify-between items-center shrink-0">
                     <span class="text-xs font-semibold uppercase tracking-wider text-emerald-400">Output DOM Tree Comparison Map</span>
-                    <button onclick="copyOutputToClipboard()" class="bg-emerald-600 hover:bg-emerald-500 text-xs text-white py-1 px-2.5 rounded transition cursor-pointer font-semibold shadow">
-                        📋 Copy Transformed XML
-                    </button>
+                    <div class="flex gap-2">
+                        <button onclick="restoreDomTree()" class="bg-amber-600 hover:bg-amber-500 text-xs text-white py-1 px-2.5 rounded transition cursor-pointer font-semibold shadow">
+                            🔄 Restore Dom Tree
+                        </button>
+                        <button onclick="copyOutputToClipboard()" class="bg-emerald-600 hover:bg-emerald-500 text-xs text-white py-1 px-2.5 rounded transition cursor-pointer font-semibold shadow">
+                            📋 Copy Transformed XML
+                        </button>
+                    </div>
                 </div>
                 <!-- Hidden storage element to allow full programmatic serialization -->
                 <textarea id="xmlOutput" readonly class="hidden"></textarea>
@@ -234,6 +255,87 @@
                 <div id="comparisonModifiedContainer" class="flex-1 p-4 overflow-auto font-mono text-xs bg-gray-950 select-text leading-6"></div>
             </div>
         </main>
+    </div>
+
+    <!-- Help Modal (Tokens Documentation) -->
+    <div id="helpModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div class="bg-gray-800 border border-gray-700 w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden flex flex-col">
+            <div class="bg-gray-850 px-5 py-3 border-b border-gray-700 flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                    <span class="text-blue-400 font-bold">❓ Help with Tokens & Features</span>
+                </div>
+                <button onclick="closeHelpModal()" class="text-gray-400 hover:text-gray-100 text-lg cursor-pointer">&times;</button>
+            </div>
+            <div class="p-5 flex flex-col gap-4 text-sm overflow-y-auto max-h-[70vh] bg-gray-900 text-gray-300">
+                <p>Tokens allow you to dynamically extract and manipulate values when running transformations. They can be used in both the <strong>Attribute Name</strong> and <strong>Expression Value</strong> fields by wrapping them in curly braces <code class="bg-gray-800 px-1 text-emerald-300 rounded">{...}</code>.</p>
+                
+                <div class="space-y-3">
+                    <div class="bg-gray-950 p-3 rounded border border-gray-800">
+                        <h3 class="text-amber-400 font-mono font-bold mb-1">{attribute[n]} / {attribute["name"]} / {att["name"]}</h3>
+                        <p class="text-xs">Extracts an attribute from the currently evaluated element by numerical index or exact quoted key. (<code>att</code> is a valid shorthand alias).</p>
+                        <p class="text-xs text-gray-500 mt-1">Example: <span class="text-emerald-400">id_{attribute["id"]}</span> → <span class="text-emerald-400">id_101</span></p>
+                        <p class="text-xs text-gray-500 mt-1">Example: <span class="text-emerald-400">{att[-0]}</span> → Returns the last attribute value.</p>
+                    </div>
+
+                    <div class="bg-gray-950 p-3 rounded border border-gray-800">
+                        <h3 class="text-amber-400 font-mono font-bold mb-1">{child[n]} / {child["tag"][n]}</h3>
+                        <p class="text-xs">Extracts inner text of direct children or chains nested commands. Use negative indices like <code>-0</code> to count from the end backwards.</p>
+                        <ul class="list-disc list-inside ml-4 mt-1 text-xs text-gray-400">
+                            <li><span class="text-emerald-400">{child[0]}</span>: Gets the first child's text.</li>
+                            <li><span class="text-emerald-400">{child[-0]}</span>: Gets the last child's text.</li>
+                            <li><span class="text-emerald-400">{child["author"][1]}</span>: Gets 2nd child of exact type "author".</li>
+                            <li><span class="text-emerald-400">{child[0](att["id"])}</span>: Retrieves the "id" of the 1st child node.</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="bg-gray-950 p-3 rounded border border-gray-800">
+                        <h3 class="text-amber-400 font-mono font-bold mb-1">{ancestor[n]} / {ancestor["tag"][n]} / {parent(...)}</h3>
+                        <p class="text-xs">Evaluates any token in the context of an ancestral element. <code>parent(...)</code> is kept for backward compatibility and is equivalent to <code>ancestor[0](...)</code>.</p>
+                        <ul class="list-disc list-inside ml-4 mt-1 text-xs text-gray-400">
+                            <li><span class="text-emerald-400">{ancestor[0](att["id"])}</span>: Gets "id" of the direct parent.</li>
+                            <li><span class="text-emerald-400">{ancestor[1](att["id"])}</span>: Gets "id" of the grandparent.</li>
+                            <li><span class="text-emerald-400">{ancestor["section"][0](att["name"])}</span>: Gets "name" of the first ancestor of type "section".</li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-gray-950 p-3 rounded border border-gray-800">
+                        <h3 class="text-amber-400 font-mono font-bold mb-1">{value}</h3>
+                        <p class="text-xs">Available only when your XPath targets an attribute directly (e.g., <code class="bg-gray-800 px-1 rounded">//@id</code>). Inserts the value of that matched attribute.</p>
+                    </div>
+
+                    <div class="bg-gray-950 p-3 rounded border border-gray-800">
+                        <h3 class="text-amber-400 font-mono font-bold mb-1">{counter["name"]}</h3>
+                        <p class="text-xs">Creates an auto-incrementing stateful counter. Resets after every pipeline run.</p>
+                        <p class="text-xs text-gray-500 mt-1">Example: <span class="text-emerald-400">item_{counter["c"]}</span> → <span class="text-emerald-400">item_1, item_2, item_3...</span></p>
+                    </div>
+
+                    <h3 class="font-bold text-gray-200 mt-4 border-b border-gray-700 pb-1">Value Modifiers</h3>
+                    
+                    <div class="bg-gray-950 p-3 rounded border border-gray-800">
+                        <h3 class="text-blue-400 font-mono font-bold mb-1">token[start:take] <span class="text-gray-400 font-sans font-normal text-xs">(Slicing)</span></h3>
+                        <p class="text-xs">Extract substrings. Append to any evaluated token. Use negative start to base calculation from the end backwards (e.g., -0 starts directly at the end).</p>
+                        <p class="text-xs text-gray-500 mt-1">Example: <span class="text-emerald-400">{att["date"][3:7]}</span> takes 7 characters starting at index 3.</p>
+                        <p class="text-xs text-gray-500 mt-0.5">Example: <span class="text-emerald-400">{value[-0:4]}</span> on "hello" starts at the end, returning backwards giving "llo".</p>
+                    </div>
+
+                    <div class="bg-gray-950 p-3 rounded border border-gray-800">
+                        <h3 class="text-blue-400 font-mono font-bold mb-1">token["separator":start:take] <span class="text-gray-400 font-sans font-normal text-xs">(Splitting)</span></h3>
+                        <p class="text-xs">Split strings into arrays by separator, slice the array with <em>start</em> and <em>take</em>, then join back.</p>
+                        <p class="text-xs text-gray-500 mt-1">Example: <span class="text-emerald-400">{att["path"]["/":0:2]}</span> splits by "/" and keeps the first 2 segments.</p>
+                    </div>
+
+                    <h3 class="font-bold text-gray-200 mt-4 border-b border-gray-700 pb-1">Other Features</h3>
+                    <ul class="list-disc list-inside text-xs text-gray-400 space-y-1">
+                        <li><strong>Groups:</strong> Organize multiple rules into foldable named groups.</li>
+                        <li><strong>Syntax Checking:</strong> The editor live-checks token syntax while you type. Invalid tokens show a red ⚠️ icon, empty evaluations show a yellow ⚠️ icon.</li>
+                        <li><strong>Restore Dom Tree:</strong> Use this button to clear your output preview and restore it exactly to the input state.</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="bg-gray-850 px-5 py-3 border-t border-gray-700 flex justify-end">
+                <button onclick="closeHelpModal()" class="bg-gray-700 hover:bg-gray-600 text-xs font-medium py-2 px-4 rounded-lg transition cursor-pointer">Close Guide</button>
+            </div>
+        </div>
     </div>
 	
 	<!-- Modal Node Editor -->
@@ -290,37 +392,378 @@
     <footer id="errorLog" class="hidden bg-red-950/80 border-t border-red-800 px-6 py-3 text-sm text-red-300 font-mono shrink-0"></footer>
 
     <script>
+        /********************************************************************************
+         * XML Editor Core Application Script
+         ********************************************************************************/
+
+        // ==========================================
+        // 1. GLOBAL / SHARED DOM REFERENCES
+        // ==========================================
         const xmlInput = document.getElementById('xmlInput');
         const xmlOutput = document.getElementById('xmlOutput');
-        const highlightLayerInput = document.getElementById('highlightLayerInput');
-        const treeContainerInput = document.getElementById('treeContainerInput');
-        const treeContainerOutput = document.getElementById('treeContainerOutput');
+        const fileInput = document.getElementById('fileInput');
         const undoInputBtn = document.getElementById('undoInputBtn');
-        
         const errorLog = document.getElementById('errorLog');
         const statusIndicator = document.getElementById('statusIndicator');
-        const xpathInput = document.getElementById('xpathInput');
-        const rulesContainer = document.getElementById('rulesContainer');
-        const xpathResultsContainer = document.getElementById('xpathResultsContainer');
-        const ruleUndoAlert = document.getElementById('ruleUndoAlert');
 
-        let currentXmlDoc = null;
-        let outputXmlDoc = null;
-        let nodeMapInput = new Map();
-        let nodeMapOutput = new Map();
+        // Navigation tab selections
+        const tabInspector = document.getElementById('tab-inspector');
+        const tabPipeline = document.getElementById('tab-pipeline');
+        const tabComparison = document.getElementById('tab-comparison');
         
-        let xpathDebounceTimer = null;
-        let rulesList = [];
-        let activeLastMatchedSnapshotRawText = ""; 
+        // Navigation panels
+        const viewPanelInspector = document.getElementById('view-panel-inspector');
+        const viewPanelPipeline = document.getElementById('view-panel-pipeline');
+        const viewPanelComparison = document.getElementById('view-panel-comparison');
 
-        let deletedRulesStack = [];
-        let inputHistoryStack = [];
+        // ==========================================
+        // 2. XML INSPECTOR PANEL DOM REFERENCES & VARIABLES
+        // ==========================================
+        const highlightLayerInput = document.getElementById('highlightLayerInput');
+        const treeContainerInput = document.getElementById('treeContainerInput');
+        const xpathInput = document.getElementById('xpathInput');
+        const xpathResultsContainer = document.getElementById('xpathResultsContainer');
+        
+        // Batch Transformation Workbench elements
+        const massEditAction = document.getElementById('massEditAction');
+        const massEditAttrName = document.getElementById('massEditAttrName');
+        const massEditValue = document.getElementById('massEditValue');
 
-        function saveInputHistorySnapshot() {
-            inputHistoryStack.push(xmlInput.value);
+        // State variables for XML Inspector
+        let currentXmlDoc = null;                  // Parsed XML Document object of user input
+        let nodeMapInput = new Map();              // Map matching input DOM nodes to visual tree positions
+        let xpathDebounceTimer = null;             // Handler for debouncing rapid XPath queries
+        let activeLastMatchedSnapshotRawText = ""; // XML text buffer holding results of current XPath query
+        let inputHistoryStack = [];                // XML string modification stack for editor UNDO
+
+        // ==========================================
+        // 2a. DRAG AND DROP XML REORGANIZER STATE VARIABLES
+        // ==========================================
+        let draggedXmlNode = null;                 // Core XML Node being repositioned
+        let draggedVisualContainer = null;         // Visually represented branch tree node
+        let dragPreview = null;                    // Floater trailing mouse cursor
+        let currentDropTarget = null;              // XML Node targeted during drag hover state
+        let currentDropAction = null;              // Position action mode ('before' | 'after' | 'inside')
+        let dropIndicator = null;                  // Visual placement bar element
+        let isDragActive = false;                  // Flag representing active drag execution state
+        let dragThresholdPosition = { x: 0, y: 0 };// Starting cursor coordinates to isolate accidental micro-clicks
+
+        // ==========================================
+        // 3. PIPELINE RULES PANEL DOM REFERENCES & VARIABLES
+        // ==========================================
+        const rulesContainer = document.getElementById('rulesContainer');
+        const ruleUndoAlert = document.getElementById('ruleUndoAlert');
+        const rulesImportInput = document.getElementById('rulesImportInput');
+        const treeContainerOutput = document.getElementById('treeContainerOutput');
+
+        // State variables for Pipeline Rules
+        let outputXmlDoc = null;                   // Parsed XML Document object of transformed output
+        let nodeMapOutput = new Map();             // Map matching output DOM nodes to visual tree positions
+        let rulesList = [];                        // Array containing batch transformation rules in current pipeline
+        let deletedRulesStack = [];                // Rule restoration stack for Ctrl+Z rule deletion UNDO
+        let syntaxCheckTimers = {};                // For debouncing live token syntax checks
+
+        // ==========================================
+        // 4. XML COMPARISON PANEL DOM REFERENCES
+        // ==========================================
+        const comparisonOriginalContainer = document.getElementById('comparisonOriginalContainer');
+        const comparisonModifiedContainer = document.getElementById('comparisonModifiedContainer');
+
+        // ==========================================
+        // 5. MODAL NODE EDITOR DOM REFERENCES & VARIABLES
+        // ==========================================
+        const nodeModal = document.getElementById('nodeModal');
+        const modalNodeTitle = document.getElementById('modalNodeTitle');
+        const modalNodeType = document.getElementById('modalNodeType');
+        const modalTagName = document.getElementById('modalTagName');
+        const modalTextValue = document.getElementById('modalTextValue');
+        const modalXPathAbsolute = document.getElementById('modalXPathAbsolute');
+        const modalXPathSimilar = document.getElementById('modalXPathSimilar');
+        const modalDeleteBtn = document.getElementById('modalDeleteBtn');
+        const tagNameInputGroup = document.getElementById('tagNameInputGroup');
+        const textValueInputGroup = document.getElementById('textValueInputGroup');
+        const xpathSimilarGroup = document.getElementById('xpathSimilarGroup');
+
+        // Active selection contexts
+        let activeSelectedNodeContext = null;
+        let activeSelectedAttrContext = null;
+
+        // Global set for preserving collapsed node states across renders
+        let collapsedNodePaths = new Set();
+
+        // ==========================================
+        // 6. GLOBAL / Event Listeners for File Handling, View Switching, and Editor Shortcuts
+        // ==========================================
+        
+        // Dynamically toggle Mass Edit input fields based on action type
+        massEditAction.addEventListener('change', () => {
+            const action = massEditAction.value;
+            if (action === 'addAttr' || action === 'modifyAttr') {
+                massEditAttrName.style.display = 'block';
+                massEditValue.style.display = 'block';
+            } else if (action === 'removeAttr') {
+                massEditAttrName.style.display = 'block';
+                massEditValue.style.display = 'none';
+            } else {
+                massEditAttrName.style.display = 'none';
+                massEditValue.style.display = 'block';
+            }
+        });
+        // Initial setup trigger
+        massEditAction.dispatchEvent(new Event('change'));
+
+        // Live execution on key entry debouncing setup
+        xpathInput.addEventListener('input', () => {
+            clearTimeout(xpathDebounceTimer);
+            xpathDebounceTimer = setTimeout(runXPathQuery, 300);
+        });
+
+        // Sync scroll between textarea and highlight layer
+        xmlInput.addEventListener('scroll', () => {
+            highlightLayerInput.scrollTop = xmlInput.scrollTop;
+            highlightLayerInput.scrollLeft = xmlInput.scrollLeft;
+        });
+
+        xmlInput.addEventListener('keydown', handleEditorShortcuts);
+        xmlInput.addEventListener('input', (e) => {
+            parseAndRenderTree('input');
+        });
+        xmlInput.addEventListener('keyup', highlightActiveScope);
+        xmlInput.addEventListener('click', highlightActiveScope);
+
+        // Handles direct local filesystem uploads
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                xmlInput.value = evt.target.result;
+                inputHistoryStack = [];
+                updateInputUndoButtonState();
+                formatXML('input');
+            };
+            reader.readAsText(file);
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (!nodeModal.classList.contains('hidden')) closeModal();
+                if (!document.getElementById('helpModal').classList.contains('hidden')) closeHelpModal();
+            }
+        });
+
+        // Bidirectional Selection Mirroring:
+        // Highlights the corresponding element block in the source code textarea 
+        // whenever a user selects a segment in the DOM visualization tree.
+        document.addEventListener('selectionchange', () => {
+            const selection = window.getSelection();
+            if (!selection.rangeCount || selection.isCollapsed) return;
+
+            const range = selection.getRangeAt(0);
+            let container = range.commonAncestorContainer;
+            if (container.nodeType === Node.TEXT_NODE) container = container.parentNode;
+
+            if (!treeContainerInput.contains(container)) return;
+
+            let currentElement = container;
+            while (currentElement && currentElement !== treeContainerInput) {
+                for (let [domNode, visual] of nodeMapInput.entries()) {
+                    if (visual.container === currentElement || visual.tagNameSpan === currentElement) {
+                        selectCodeMirrorRegion(visual.sourceStart, visual.sourceEnd);
+                        return;
+                    }
+                }
+                currentElement = currentElement.parentNode;
+            }
+        });
+
+        // =========================================================
+        // 6a. MOUSE EVENT DRAG-AND-DROP COORDINATOR EVENT LISTENERS
+        // =========================================================
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragActive) return;
+
+            // Initialize visual drag elements if drag motion breaks the 5px tolerance boundary
+            if (!dragPreview) {
+                const distance = Math.hypot(e.clientX - dragThresholdPosition.x, e.clientY - dragThresholdPosition.y);
+                if (distance > 5) {
+                    dragPreview = document.createElement('div');
+                    dragPreview.className = "fixed pointer-events-none z-50 bg-blue-900/90 border border-blue-500/80 text-blue-100 rounded-lg px-3 py-1.5 font-mono text-xs shadow-2xl opacity-80 scale-90 origin-top-left transition-transform duration-100";
+                    dragPreview.innerHTML = `&lt;${draggedXmlNode.tagName}&gt;`;
+                    document.body.appendChild(dragPreview);
+
+                    draggedVisualContainer.classList.add('opacity-30');
+                    document.body.classList.add('select-none');
+                } else {
+                    return;
+                }
+            }
+
+            // Reposition custom drag preview overlay near cursor
+            dragPreview.style.left = `${e.clientX + 15}px`;
+            dragPreview.style.top = `${e.clientY + 15}px`;
+
+            // Detect hovered tree row elements underneath dragging coordinates
+            const elementOver = document.elementFromPoint(e.clientX, e.clientY);
+            if (!elementOver) return;
+
+            const rowElement = elementOver.closest('.tree-row');
+            if (rowElement && treeContainerInput.contains(rowElement)) {
+                let matchedNode = null;
+                // Identify target node by matching the exact tagLine or closeTagLine references
+                for (let [inNode, inVisual] of nodeMapInput.entries()) {
+                    if (inVisual.tagLine === rowElement || inVisual.closeTagLine === rowElement) {
+                        matchedNode = inNode;
+                        break;
+                    }
+                }
+
+                // Verify targeted element is valid (not dropping inside self or direct child lines)
+                if (matchedNode && matchedNode !== draggedXmlNode && !draggedXmlNode.contains(matchedNode)) {
+                    const rect = rowElement.getBoundingClientRect();
+                    const relativeY = e.clientY - rect.top;
+                    const height = rect.height;
+
+                    let action = 'inside';
+                    
+                    // Root element cannot have any siblings, so force "inside" drop mode
+                    if (matchedNode === currentXmlDoc.documentElement) {
+                        action = 'inside';
+                    } else if (relativeY < height * 0.3) {
+                        action = 'before';
+                    } else if (relativeY > height * 0.7) {
+                        action = 'after';
+                    }
+
+                    // Prevent nested "inside" dropping into leaf text elements to avoid creating mixed content
+                    let hasDirectText = Array.from(matchedNode.childNodes).some(c => c.nodeType === Node.TEXT_NODE && c.nodeValue.trim().length > 0);
+                    
+                    if (action === 'inside' && hasDirectText) {
+                        hideDropIndicator();
+                        currentDropTarget = null;
+                        currentDropAction = null;
+                    } else {
+                        showDropIndicator(rowElement, action);
+                        currentDropTarget = matchedNode;
+                        currentDropAction = action;
+                    }
+                } else {
+                    hideDropIndicator();
+                    currentDropTarget = null;
+                    currentDropAction = null;
+                }
+            } else {
+                hideDropIndicator();
+                currentDropTarget = null;
+                currentDropAction = null;
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (!isDragActive) return;
+            isDragActive = false;
+
+            if (dragPreview) {
+                dragPreview.remove();
+                dragPreview = null;
+                draggedVisualContainer.classList.remove('opacity-30');
+                document.body.classList.remove('select-none');
+            }
+
+            hideDropIndicator();
+
+            if (currentDropTarget && currentDropAction) {
+                saveInputHistorySnapshot();
+                try {
+                    // Prevent dropping root element to be nested inside child branches
+                    if (draggedXmlNode === currentXmlDoc.documentElement && currentDropAction === 'inside') {
+                        throw new Error("Cannot drop the document root node element inside child elements.");
+                    }
+
+                    if (currentDropAction === 'inside') {
+                        currentDropTarget.appendChild(draggedXmlNode);
+                    } else if (currentDropAction === 'before') {
+                        if (draggedXmlNode === currentXmlDoc.documentElement) {
+                            throw new Error("Root element cannot be positioned relative to siblings.");
+                        }
+                        currentDropTarget.parentNode.insertBefore(draggedXmlNode, currentDropTarget);
+                    } else if (currentDropAction === 'after') {
+                        if (draggedXmlNode === currentXmlDoc.documentElement) {
+                            throw new Error("Root element cannot be positioned relative to siblings.");
+                        }
+                        currentDropTarget.parentNode.insertBefore(draggedXmlNode, currentDropTarget.nextSibling);
+                    }
+
+                    updateSourceFromDOM(currentXmlDoc);
+                    clearError();
+                } catch (err) {
+                    showError(err.message);
+                }
+            }
+
+            draggedXmlNode = null;
+            draggedVisualContainer = null;
+            currentDropTarget = null;
+            currentDropAction = null;
+        });
+
+        /**
+         * Computes boundaries and triggers drop-indicator bar visuals.
+         * @param {HTMLElement} rowElement - Target Tree DOM Node container.
+         * @param {string} action - Selected positioning target strategy.
+         */
+        function showDropIndicator(rowElement, action) {
+            if (!dropIndicator) {
+                dropIndicator = document.createElement('div');
+                dropIndicator.className = "absolute pointer-events-none z-40 bg-blue-500 h-0.5 transition-all duration-75";
+                document.body.appendChild(dropIndicator);
+            }
+
+            const rect = rowElement.getBoundingClientRect();
+            document.querySelectorAll('.drop-inside-highlight').forEach(el => el.classList.remove('drop-inside-highlight'));
+
+            if (action === 'inside') {
+                dropIndicator.style.display = 'none';
+                rowElement.classList.add('drop-inside-highlight');
+            } else if (action === 'before') {
+                dropIndicator.style.display = 'block';
+                dropIndicator.style.width = `${rect.width}px`;
+                dropIndicator.style.left = `${rect.left + window.scrollX}px`;
+                dropIndicator.style.top = `${rect.top + window.scrollY - 1}px`;
+            } else if (action === 'after') {
+                dropIndicator.style.display = 'block';
+                dropIndicator.style.width = `${rect.width}px`;
+                dropIndicator.style.left = `${rect.left + window.scrollX}px`;
+                dropIndicator.style.top = `${rect.bottom + window.scrollY + 1}px`;
+            }
+        }
+
+        /**
+         * Extinguishes drop indicator bar and visual highlight helper decorations.
+         */
+        function hideDropIndicator() {
+            if (dropIndicator) {
+                dropIndicator.style.display = 'none';
+            }
+            document.querySelectorAll('.drop-inside-highlight').forEach(el => el.classList.remove('drop-inside-highlight', 'bg-blue-500/20'));
+        }
+
+        // ==========================================
+        // 7. GLOBAL CORE LOGIC & FUNCTIONS
+        // ==========================================
+        
+        /**
+         * Pushes current state string into the input history array.
+         * Updates visual enabled/disabled states of the undo controls.
+         */
+        function saveInputHistorySnapshot(xmlInputValue = xmlInput.value) {
+            inputHistoryStack.push(xmlInputValue);
             updateInputUndoButtonState();
         }
 
+        /**
+         * Reverts input text state to the previous snapshot.
+         */
         function undoInput() {
             if (inputHistoryStack.length > 0) {
                 xmlInput.value = inputHistoryStack.pop();
@@ -328,62 +771,86 @@
                 clearError();
             }
             updateInputUndoButtonState();
+            highlightActiveScope();
         }
 
+        /**
+         * Computes and mutates the visual disabled attributes of the input undo trigger button.
+         */
         function updateInputUndoButtonState() {
             undoInputBtn.disabled = (inputHistoryStack.length === 0);
         }
 
-        // Workspace Navigation Management
+        /**
+         * Switches workspace view panels and sets corresponding navigation tab highlight styles.
+         * Runs visual calculations (like line Diff calculations and pipeline mutations overlays)
+         * depending on active mode targets.
+         * @param {string} targetMode - The selected tab target ('inspector' | 'pipeline' | 'comparison')
+         */
         function switchViewMode(targetMode) {
-            const viewInspector = document.getElementById('view-panel-inspector');
-            const viewPipeline = document.getElementById('view-panel-pipeline');
-            const viewComparison = document.getElementById('view-panel-comparison');
-            const tabInspector = document.getElementById('tab-inspector');
-            const tabPipeline = document.getElementById('tab-pipeline');
-            const tabComparison = document.getElementById('tab-comparison');
-
-            // Reset tab styles
+            // Reset tab navigation active styling back to default gray states
             tabInspector.className = "px-4 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer text-gray-400 hover:text-gray-200";
             tabPipeline.className = "px-4 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer text-gray-400 hover:text-gray-200";
             tabComparison.className = "px-4 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer text-gray-400 hover:text-gray-200";
 
-            viewInspector.classList.add('hidden');
-            viewPipeline.classList.add('hidden');
-            viewComparison.classList.add('hidden');
+            viewPanelInspector.classList.add('hidden');
+            viewPanelPipeline.classList.add('hidden');
+            viewPanelComparison.classList.add('hidden');
 
             if (targetMode === 'inspector') {
-                viewInspector.classList.remove('hidden');
-                viewInspector.classList.add('flex');
+                viewPanelInspector.classList.remove('hidden');
+                viewPanelInspector.classList.add('flex');
                 tabInspector.className = "px-4 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer bg-blue-600 text-white shadow-md";
                 highlightActiveScope();
             } else if (targetMode === 'pipeline') {
-                viewPipeline.classList.remove('hidden');
-                viewPipeline.classList.add('flex');
+                viewPanelPipeline.classList.remove('hidden');
+                viewPanelPipeline.classList.add('flex');
                 tabPipeline.className = "px-4 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer bg-blue-600 text-white shadow-md";
                 runDiffComparisonHighlighter();
             } else if (targetMode === 'comparison') {
-                viewComparison.classList.remove('hidden');
-                viewComparison.classList.add('flex');
+                viewPanelComparison.classList.remove('hidden');
+                viewPanelComparison.classList.add('flex');
                 tabComparison.className = "px-4 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer bg-blue-600 text-white shadow-md";
                 renderComparisonDiff();
             }
         }
 
+        /**
+         * Dispatches target action to trigger generic editor rollback (undo logic) on Ctrl+Z events.
+         */
         function triggerGlobalUndo() {
-            if (!document.getElementById('view-panel-inspector').classList.contains('hidden')) {
+            if (!viewPanelInspector.classList.contains('hidden')) {
                 undoInput();
             } else if (deletedRulesStack.length > 0) {
                 undoRuleDeletion();
             }
         }
+        
+        function openHelpModal() {
+            document.getElementById('helpModal').classList.remove('hidden');
+        }
 
-        // Extremely robust Syntax Highlighter preventing overlaps
+        function closeHelpModal() {
+            document.getElementById('helpModal').classList.add('hidden');
+        }
+
+        function restoreDomTree() {
+            xmlOutput.value = xmlInput.value;
+            parseAndRenderTree('output');
+        }
+
+        /**
+         * Parses and outputs colored/stylized XML strings using explicit classification loops.
+         * Prevents character overlap visual rendering bugs while injecting custom highlighting classes.
+         * @param {string} text - Raw, unescaped target source XML text block.
+         * @param {Array<Object>} activeElements - Tracked hierarchy path descriptors.
+         * @returns {string} Fully styled HTML text structure.
+         */
         function highlightXmlText(text, activeElements = []) {
             let bgClasses = new Array(text.length).fill('');
             let syntaxClasses = new Array(text.length).fill('');
 
-            // Background Target Calculation
+            // Highlight calculations for currently matched XPath targets
             activeElements.forEach((el, index) => {
                 let isTarget = (index === activeElements.length - 1);
                 if (isTarget) {
@@ -395,32 +862,35 @@
                 }
             });
 
-            // Syntax Classification 
+            // Parse and classify comment matches using regex
             let match;
-            const commentRegex = /<!--[\s\S]*?-->/g;
+            const commentRegex = new RegExp("<!--[\\s\\S]*?-->", "g");
             while ((match = commentRegex.exec(text)) !== null) {
                 for (let i = match.index; i < commentRegex.lastIndex; i++) syntaxClasses[i] = 'text-gray-500 italic';
             }
             
+            // Core regex loop detecting tag matches and assigning granular syntax styles (attributes, values)
             const tagRegex = /<[^>]+>/g;
             while ((match = tagRegex.exec(text)) !== null) {
                 let tagStr = match[0];
                 let tagStart = match.index;
                 
                 if (syntaxClasses[tagStart] === '') {
-                    syntaxClasses[tagStart] = 'text-gray-500 font-bold'; // <
-                    if (tagStr.startsWith('</')) syntaxClasses[tagStart + 1] = 'text-gray-500 font-bold'; // /
+                    syntaxClasses[tagStart] = 'text-gray-500 font-bold'; // opening bracket `<`
+                    if (tagStr.startsWith('</')) syntaxClasses[tagStart + 1] = 'text-gray-500 font-bold'; // closing symbol `/`
                     
                     let endBracketIndex = tagStart + tagStr.length - 1;
-                    syntaxClasses[endBracketIndex] = 'text-gray-500 font-bold'; // >
-                    if (tagStr.endsWith('/>')) syntaxClasses[endBracketIndex - 1] = 'text-gray-500 font-bold'; // /
+                    syntaxClasses[endBracketIndex] = 'text-gray-500 font-bold'; // closing bracket `>`
+                    if (tagStr.endsWith('/>')) syntaxClasses[endBracketIndex - 1] = 'text-gray-500 font-bold'; // self-closing `/`
                     
+                    // Style tag names with a distinct color (blue)
                     let nameMatch = tagStr.match(/^<\/?([a-zA-Z0-9_:-]+)/);
                     if (nameMatch) {
                         let nameStart = tagStart + (tagStr.startsWith('</') ? 2 : 1);
                         for(let i = 0; i < nameMatch[1].length; i++) syntaxClasses[nameStart + i] = 'text-blue-400 font-medium';
                     }
                     
+                    // Isolate key-value structures representing attributes
                     let attrRegex = /([a-zA-Z0-9_:-]+)\s*=\s*(['"])(.*?)\2/g;
                     let attrMatch;
                     while ((attrMatch = attrRegex.exec(tagStr)) !== null) {
@@ -430,15 +900,16 @@
                         
                         let attrStart = tagStart + attrMatch.index;
                         for(let i = 0; i < attrName.length; i++) syntaxClasses[attrStart + i] = 'text-amber-400';
-                        syntaxClasses[attrStart + attrName.length] = 'text-gray-500'; // =
+                        syntaxClasses[attrStart + attrName.length] = 'text-gray-500'; // character `=`
                         
-                        let valStart = attrStart + attrName.length + 1; // quote start
+                        let valStart = attrStart + attrName.length + 1; // start index of quote
                         let valLen = quote.length + attrVal.length + quote.length;
                         for(let i = 0; i < valLen; i++) syntaxClasses[valStart + i] = 'text-emerald-400';
                     }
                 }
             }
 
+            // Construct output markup containing correct DOM boundaries
             let resultHtml = "";
             let currentCombined = null;
             
@@ -462,15 +933,24 @@
             return resultHtml;
         }
 
-        // Line Alignment and Diff Computation
+        /**
+         * Dynamic Programming Edit Distance Algorithm (Levenshtein Alignment-based variation).
+         * Calculates line differences by aligning line sets of original vs. modified documents.
+         * Generates an array detailing line modifications (added, removed, modified, unchanged).
+         * @param {Array<string>} originalLines - Source file line string components.
+         * @param {Array<string>} modifiedLines - Transformed file line string components.
+         * @returns {Array<Object>} Linear trace instructions for generating structural side-by-side view.
+         */
         function computeLineDiff(originalLines, modifiedLines) {
             const n = originalLines.length;
             const m = modifiedLines.length;
             const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
             
+            // DP table initialization
             for (let i = 0; i <= n; i++) dp[i][0] = i;
             for (let j = 0; j <= m; j++) dp[0][j] = j;
             
+            // Populating edit costs matrix
             for (let i = 1; i <= n; i++) {
                 for (let j = 1; j <= m; j++) {
                     if (originalLines[i - 1].trim() === modifiedLines[j - 1].trim()) {
@@ -481,6 +961,7 @@
                 }
             }
             
+            // Backtracking to resolve optimal path
             let i = n, j = m;
             let aligned = [];
             
@@ -497,6 +978,7 @@
                 }
             }
 
+            // Post-process sequence tracking elements to group removed + added pairs as 'modified'
             let finalAligned = [];
             for (let k = 0; k < aligned.length; k++) {
                 if (aligned[k].type === 'removed' && k + 1 < aligned.length && aligned[k + 1].type === 'added') {
@@ -509,16 +991,16 @@
             return finalAligned;
         }
 
+        /**
+         * Resolves current line-by-line differences and draws them in dual alignment comparison columns.
+         */
         function renderComparisonDiff() {
-            const originalContainer = document.getElementById('comparisonOriginalContainer');
-            const modifiedContainer = document.getElementById('comparisonModifiedContainer');
-            
             const originalText = xmlInput.value;
             const modifiedText = xmlOutput.value;
             
             if (!originalText.trim() || !modifiedText.trim()) {
-                originalContainer.innerHTML = `<div class="text-xs text-gray-500 italic">No original data to compare. Configure your input first.</div>`;
-                modifiedContainer.innerHTML = `<div class="text-xs text-gray-500 italic">Run the Rules Pipeline first to preview changes.</div>`;
+                comparisonOriginalContainer.innerHTML = `<div class="text-xs text-gray-500 italic">No original data to compare. Configure your input first.</div>`;
+                comparisonModifiedContainer.innerHTML = `<div class="text-xs text-gray-500 italic">Run the Rules Pipeline first to preview changes.</div>`;
                 return;
             }
             
@@ -553,10 +1035,13 @@
                 modHtml += `<div class="${modClass}">${lineNumPrefix}${formattedMod}</div>`;
             });
             
-            originalContainer.innerHTML = origHtml;
-            modifiedContainer.innerHTML = modHtml;
+            comparisonOriginalContainer.innerHTML = origHtml;
+            comparisonModifiedContainer.innerHTML = modHtml;
         }
 
+        /**
+         * Serializes the modified XML output buffer and copies the plain string to systemic clipboard.
+         */
         function copyOutputToClipboard() {
             const xmlText = xmlOutput.value || xmlInput.value;
             if (!xmlText.trim()) {
@@ -578,11 +1063,12 @@
             document.body.removeChild(tempTextArea);
         }
 
-        xmlInput.addEventListener('scroll', () => {
-            highlightLayerInput.scrollTop = xmlInput.scrollTop;
-            highlightLayerInput.scrollLeft = xmlInput.scrollLeft;
-        });
-
+        /**
+         * Jumps the textarea scroll offset and selection ranges to target character positions.
+         * Used for focusing elements on editor double clicks.
+         * @param {number} sourceStart - Starting character index of target element block.
+         * @param {number} sourceEnd - Ending character index of target element block.
+         */
         function selectCodeMirrorRegion(sourceStart, sourceEnd) {
             if (sourceStart !== undefined && sourceEnd !== undefined) {
                 xmlInput.focus();
@@ -599,78 +1085,172 @@
             }
         }
 
-        // Bidirectional Highlighting Selection Mirroring Engine
-        document.addEventListener('selectionchange', () => {
-            const selection = window.getSelection();
-            if (!selection.rangeCount || selection.isCollapsed) return;
-
-            const range = selection.getRangeAt(0);
-            let container = range.commonAncestorContainer;
-            if (container.nodeType === Node.TEXT_NODE) container = container.parentNode;
-
-            if (!treeContainerInput.contains(container)) return;
-
-            let currentElement = container;
-            while (currentElement && currentElement !== treeContainerInput) {
-                for (let [domNode, visual] of nodeMapInput.entries()) {
-                    if (visual.container === currentElement || visual.tagNameSpan === currentElement) {
-                        selectCodeMirrorRegion(visual.sourceStart, visual.sourceEnd);
-                        return;
-                    }
-                }
-                currentElement = currentElement.parentNode;
-            }
-        });
-
-        xpathInput.addEventListener('input', () => {
-            clearTimeout(xpathDebounceTimer);
-            xpathDebounceTimer = setTimeout(runXPathQuery, 300);
-        });
-
-        xmlInput.addEventListener('keydown', handleEditorShortcuts);
-        xmlInput.addEventListener('input', () => {
-            saveInputHistorySnapshot();
-            parseAndRenderTree('input');
-        });
-        xmlInput.addEventListener('keyup', highlightActiveScope);
-        xmlInput.addEventListener('click', highlightActiveScope);
-        
-        document.getElementById('fileInput').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(evt) {
-                xmlInput.value = evt.target.result;
-                inputHistoryStack = [];
-                updateInputUndoButtonState();
-                formatXML('input');
-            };
-            reader.readAsText(file);
-        });
-
+        /**
+         * Evaluates modifier key combinations and routes to undo or duplication logic blocks.
+         * Upgraded with Auto-close tags, Smart Enter, Comment toggling, and Line shifting.
+         * @param {KeyboardEvent} e - Keydown event descriptor.
+         */
         function handleEditorShortcuts(e) {
             const isCtrl = e.ctrlKey || e.metaKey;
             const isAlt = e.altKey;
 
-            if (isCtrl && e.key.toLowerCase() === 'z') {
-                e.preventDefault();
-                triggerGlobalUndo();
-                return;
+            // Smart Enter (Auto-Indent)
+            if (e.key === 'Enter') {
+                const val = xmlInput.value;
+                const start = xmlInput.selectionStart;
+                const textBefore = val.substring(0, start);
+                const textAfter = val.substring(start);
+                
+                const lineStart = textBefore.lastIndexOf('\n') + 1;
+                const currentLine = textBefore.substring(lineStart);
+                const indentMatch = currentLine.match(/^\s*/);
+                const indent = indentMatch ? indentMatch[0] : '';
+
+                // Check if cursor is directly between opening and closing tags (e.g., > <)
+                if (textBefore.match(/<[^/][^>]*>$/) && textAfter.match(/^<\//)) {
+                    e.preventDefault();
+                    saveInputHistorySnapshot();
+                    const newIndent = indent + "   ";
+                    document.execCommand('insertText', false, '\n' + newIndent + '\n' + indent);
+                    xmlInput.setSelectionRange(start + 1 + newIndent.length, start + 1 + newIndent.length);
+                    parseAndRenderTree('input');
+                    return;
+                } else {
+                    // Standard inherit-indentation
+                    e.preventDefault();
+                    saveInputHistorySnapshot();
+                    document.execCommand('insertText', false, '\n' + indent);
+                    parseAndRenderTree('input');
+                    return;
+                }
             }
+
+            // Auto-Close Tags
+            if (e.key === '>') {
+                const val = xmlInput.value;
+                const start = xmlInput.selectionStart;
+                const textBefore = val.substring(0, start);
+                
+                // Check if typing '>' concludes a new opening tag
+                const match = textBefore.match(/<([a-zA-Z0-9_:-]+)(?:\s+[^>]*)?$/);
+                if (match && !textBefore.endsWith('/')) {
+                    e.preventDefault();
+                    saveInputHistorySnapshot();
+                    const tagName = match[1];
+                    document.execCommand('insertText', false, `></${tagName}>`);
+                    xmlInput.setSelectionRange(start + 1, start + 1); // Move cursor inside
+                    parseAndRenderTree('input');
+                    return;
+                }
+            }
+
             if (e.key === 'Tab') {
                 e.preventDefault();
-                saveInputHistorySnapshot();
-                document.execCommand('insertText', false, "  ");
+                document.execCommand('insertText', false, "   "); // Matches your 3-space format
                 parseAndRenderTree('input');
                 return;
             }
+
+            // Ctrl + D: Duplicate text
             if (isCtrl && !isAlt && e.key.toLowerCase() === 'd') {
                 e.preventDefault();
                 saveInputHistorySnapshot();
                 duplicateText(false, false);
+                return;
+            }
+
+            // Ctrl + /: Toggle Comment
+            if (isCtrl && e.key === '/') {
+                e.preventDefault();
+                saveInputHistorySnapshot();
+                toggleComment();
+                return;
+            }
+
+            // Alt + Up / Alt + Down: Move lines
+            if (isAlt && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+                e.preventDefault();
+                saveInputHistorySnapshot();
+                moveLines(e.key === 'ArrowUp');
+                return;
             }
         }
 
+        /**
+         * Shifts the currently selected line(s) up or down.
+         * @param {boolean} isUp - Direction indicator.
+         */
+        function moveLines(isUp) {
+            const start = xmlInput.selectionStart;
+            const end = xmlInput.selectionEnd;
+            const val = xmlInput.value;
+
+            let lineStart = val.lastIndexOf('\n', start - 1) + 1;
+            let lineEnd = val.indexOf('\n', end);
+            if (lineEnd === -1) lineEnd = val.length;
+
+            const selectedLines = val.substring(lineStart, lineEnd);
+
+            if (isUp && lineStart > 0) {
+                let prevLineStart = val.lastIndexOf('\n', lineStart - 2) + 1;
+                const prevLine = val.substring(prevLineStart, lineStart - 1); 
+                
+                const before = val.substring(0, prevLineStart);
+                const after = val.substring(lineEnd);
+                
+                xmlInput.value = before + selectedLines + '\n' + prevLine + after;
+                xmlInput.setSelectionRange(start - prevLine.length - 1, end - prevLine.length - 1);
+            } else if (!isUp && lineEnd < val.length) {
+                let nextLineEnd = val.indexOf('\n', lineEnd + 1);
+                if (nextLineEnd === -1) nextLineEnd = val.length;
+                
+                const nextLine = val.substring(lineEnd + 1, nextLineEnd);
+                
+                const before = val.substring(0, lineStart);
+                const after = val.substring(nextLineEnd);
+                
+                xmlInput.value = before + nextLine + '\n' + selectedLines + after;
+                xmlInput.setSelectionRange(start + nextLine.length + 1, end + nextLine.length + 1);
+            }
+            parseAndRenderTree('input');
+            highlightActiveScope();
+        }
+
+        /**
+         * Toggles standard XML comment blocks <!-- --> over the active selection or current line.
+         */
+        function toggleComment() {
+            let start = xmlInput.selectionStart;
+            let end = xmlInput.selectionEnd;
+            const val = xmlInput.value;
+
+            if (start === end) {
+                start = val.lastIndexOf('\n', start - 1) + 1;
+                end = val.indexOf('\n', start);
+                if (end === -1) end = val.length;
+            }
+            
+            const selectedText = val.substring(start, end);
+            
+            if (selectedText.trim().startsWith('<!--') && selectedText.trim().endsWith('-->')) {
+                // Uncomment
+                const newText = selectedText.replace(/^\s*<!--\s*/, '').replace(/\s*-->\s*$/, '');
+                xmlInput.setSelectionRange(start, end);
+                document.execCommand('insertText', false, newText);
+                xmlInput.setSelectionRange(start, start + newText.length);
+            } else {
+                // Comment
+                const newText = `<!-- ${selectedText} -->`;
+                xmlInput.setSelectionRange(start, end);
+                document.execCommand('insertText', false, newText);
+                xmlInput.setSelectionRange(start, start + newText.length);
+            }
+            parseAndRenderTree('input');
+        }
+
+        /**
+         * Duplicates targeted characters or complete current text lines.
+         */
         function duplicateText(isDirectional, isUp) {
             const val = xmlInput.value;
             const start = xmlInput.selectionStart;
@@ -692,63 +1272,109 @@
             parseAndRenderTree('input');
         }
 
-        function toggleActionFields() {
-            const action = document.getElementById('massEditAction').value;
-            const nameInput = document.getElementById('massEditAttrName');
-            if (['modifyText'].includes(action)) {
-                nameInput.disabled = true;
-                nameInput.placeholder = "(Not Applicable)";
-                nameInput.value = "";
-            } else {
-                nameInput.disabled = false;
-                nameInput.placeholder = "Attr Name";
-            }
-        }
-
+        /**
+         * Synchronizes local pipeline state with persistent localStorage configurations.
+         */        
         function loadSavedRulesPipeline() {
             try {
-                const stored = localStorage.getItem('xml_automation_pipeline_rules');
+                const stored = localStorage.getItem('xml_automation_pipeline_rules_v2');
                 rulesList = stored ? JSON.parse(stored) : [];
-                rulesList.forEach(r => { if (r.enabled === undefined) r.enabled = true; });
+                rulesList.forEach(r => { 
+                    if (r.enabled === undefined) r.enabled = true; 
+                    if (r.type === 'rule') {
+                        if (r.attrName === undefined) r.attrName = '';
+                        r.errors = [];
+                        r.warnings = [];
+                    }
+                });
             } catch(e) {
                 rulesList = [];
             }
             renderRulesPipelineUi();
         }
 
+        /**
+         * Commits current active mutation rules list array directly into localStorage.
+         */
         function saveRulesPipelineToStorage() {
-            localStorage.setItem('xml_automation_pipeline_rules', JSON.stringify(rulesList));
+            // Strip out temporary errors/warnings before storing
+            const safeList = JSON.parse(JSON.stringify(rulesList));
+            const traverse = (arr) => {
+                arr.forEach(a => {
+                    if (a.type === 'rule') {
+                        delete a.errors;
+                        delete a.warnings;
+                    } else if (a.type === 'group' && a.rules) {
+                        traverse(a.rules);
+                    }
+                });
+            };
+            traverse(safeList);
+            localStorage.setItem('xml_automation_pipeline_rules_v2', JSON.stringify(safeList));
         }
 
-        function addNewRuleRow() {
-            rulesList.push({
+        function addNewRuleRow(groupId = null) {
+            const newRule = {
                 id: Date.now() + Math.random().toString(36).substring(2, 7),
+                type: 'rule',
+                name: '',
                 enabled: true,
                 xpath: '',
                 action: 'addAttr',
-                attrName: '',
-                value: ''
+                attrName: 'new_attribute',
+                value: '',
+                errors: [],
+                warnings: []
+            };
+            if (groupId) {
+                const group = rulesList.find(r => r.id === groupId && r.type === 'group');
+                if (group) group.rules.push(newRule);
+            } else {
+                rulesList.push(newRule);
+            }
+            saveRulesPipelineToStorage();
+            renderRulesPipelineUi();
+        }
+
+        function addNewGroupRow() {
+            rulesList.push({
+                id: Date.now() + Math.random().toString(36).substring(2, 7),
+                type: 'group',
+                name: 'New Group',
+                enabled: true,
+                rules: []
             });
             saveRulesPipelineToStorage();
             renderRulesPipelineUi();
         }
 
-        function deleteRuleRow(id, index) {
-            const ruleToBackup = rulesList.find(r => r.id === id);
-            if (ruleToBackup) {
-                deletedRulesStack.push({ rule: { ...ruleToBackup }, originalIndex: index });
-                ruleUndoAlert.classList.remove('hidden');
+        function findRuleDeep(id, array = rulesList) {
+            for (let i = 0; i < array.length; i++) {
+                if (array[i].id === id) return { item: array[i], array, index: i };
+                if (array[i].type === 'group' && array[i].rules) {
+                    let result = findRuleDeep(id, array[i].rules);
+                    if (result) return result;
+                }
             }
-            rulesList = rulesList.filter(r => r.id !== id);
-            saveRulesPipelineToStorage();
-            renderRulesPipelineUi();
+            return null;
+        }
+
+        function deleteRuleRow(id) {
+            const found = findRuleDeep(id);
+            if (found) {
+                deletedRulesStack.push({ rule: { ...found.item }, originalArray: found.array, originalIndex: found.index });
+                ruleUndoAlert.classList.remove('hidden');
+                found.array.splice(found.index, 1);
+                saveRulesPipelineToStorage();
+                renderRulesPipelineUi();
+            }
         }
 
         function undoRuleDeletion() {
             if (deletedRulesStack.length === 0) return;
             const recoveryPayload = deletedRulesStack.pop();
             if (recoveryPayload) {
-                rulesList.splice(recoveryPayload.originalIndex, 0, recoveryPayload.rule);
+                recoveryPayload.originalArray.splice(recoveryPayload.originalIndex, 0, recoveryPayload.rule);
                 saveRulesPipelineToStorage();
                 renderRulesPipelineUi();
             }
@@ -757,120 +1383,422 @@
             }
         }
 
-        function shiftRulePosition(index, direction) {
-            const targetIndex = index + direction;
-            if (targetIndex < 0 || targetIndex >= rulesList.length) return;
-            const element = rulesList.splice(index, 1)[0];
-            rulesList.splice(targetIndex, 0, element);
+        function shiftRulePosition(id, direction) {
+            const found = findRuleDeep(id);
+            if (!found) return;
+            const targetIndex = found.index + direction;
+            if (targetIndex < 0 || targetIndex >= found.array.length) return;
+            const element = found.array.splice(found.index, 1)[0];
+            found.array.splice(targetIndex, 0, element);
             saveRulesPipelineToStorage();
             renderRulesPipelineUi();
         }
 
         function syncRuleFieldData(id, key, value) {
-            const rule = rulesList.find(r => r.id === id);
-            if (rule) {
-                rule[key] = value;
-                if (key === 'action') {
-                    const nameField = document.getElementById(`attrName-${id}`);
-                    if (['modifyText'].includes(value)) {
-                        nameField.disabled = true;
-                        nameField.value = '';
-                        rule.attrName = '';
-                    } else {
-                        nameField.disabled = false;
-                    }
-                }
+            const found = findRuleDeep(id);
+            if (found) {
+                found.item[key] = value;
                 saveRulesPipelineToStorage();
             }
         }
 
+        function scheduleSyntaxCheck(ruleId) {
+            if (syntaxCheckTimers[ruleId]) clearTimeout(syntaxCheckTimers[ruleId]);
+            syntaxCheckTimers[ruleId] = setTimeout(() => {
+                dryRunRuleSyntax(ruleId);
+            }, 1000);
+        }
+
+        function dryRunRuleSyntax(ruleId) {
+            let found = findRuleDeep(ruleId);
+            if (!found || found.item.type !== 'rule') return;
+            let rule = found.item;
+            rule.errors = [];
+            
+            const mockNode = document.createElement('dummy');
+            let tempContext = { errors: [], warnings: [] }; 
+            if (rule.attrName) evaluateTemplate(mockNode, rule.attrName, null, new Map(), tempContext);
+            if (rule.value) evaluateTemplate(mockNode, rule.value, null, new Map(), tempContext);
+            
+            rule.errors = tempContext.errors;
+            renderRulesPipelineUi();
+        }
+
         function renderRulesPipelineUi() {
             if (rulesList.length === 0) {
-                rulesContainer.innerHTML = `<div class="text-xs text-gray-500 italic py-2 text-center bg-gray-900/40 rounded border border-dashed border-gray-880">No rules registered. Click "Add Rule" to begin.</div>`;
+                rulesContainer.innerHTML = `<div class="text-xs text-gray-500 italic py-2 text-center bg-gray-900/40 rounded border border-dashed border-gray-880">No rules registered. Click "+ Rule" or "📁 Group" to begin.</div>`;
                 return;
             }
             rulesContainer.innerHTML = '';
-            rulesList.forEach((rule, idx) => {
-                const row = document.createElement('div');
-                row.className = `flex flex-col bg-gray-900 border border-gray-700/80 rounded-lg p-3 gap-2 transition ${!rule.enabled ? 'opacity-50' : ''}`;
-                const isTextAction = ['modifyText'].includes(rule.action);
-
-                row.innerHTML = `
-                    <div class="flex items-center gap-2 shrink-0">
-                        <input type="checkbox" ${rule.enabled ? 'checked' : ''} onchange="syncRuleFieldData('${rule.id}', 'enabled', this.checked); renderRulesPipelineUi();" class="w-4 h-4 rounded bg-gray-950 border-gray-700 text-blue-500 focus:ring-0 cursor-pointer">
-                        <div class="flex items-center gap-0.5 text-gray-500 font-sans font-bold min-w-[45px]">
-                            <button onclick="shiftRulePosition(${idx}, -1)" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === 0 ? 'disabled' : ''}>▲</button>
-                            <button onclick="shiftRulePosition(${idx}, 1)" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === rulesList.length - 1 ? 'disabled' : ''}>▼</button>
-                            <span class="text-gray-400 ml-0.5">#${idx + 1}</span>
+            
+            const renderItem = (item, parentArray, container, isNested) => {
+                const idx = parentArray.indexOf(item);
+                if (item.type === 'group') {
+                    const row = document.createElement('div');
+                    row.className = `flex flex-col bg-gray-850 border border-indigo-700/50 rounded-lg p-2 gap-2 transition ${!item.enabled ? 'opacity-50' : ''}`;
+                    row.innerHTML = `
+                        <div class="flex items-center gap-2 shrink-0">
+                            <input type="checkbox" ${item.enabled ? 'checked' : ''} onchange="syncRuleFieldData('${item.id}', 'enabled', this.checked); renderRulesPipelineUi();" class="w-4 h-4 rounded bg-gray-950 border-gray-700 text-blue-500 focus:ring-0 cursor-pointer">
+                            <div class="flex items-center gap-0.5 text-gray-500 font-sans font-bold min-w-[45px]">
+                                <button onclick="shiftRulePosition('${item.id}', -1)" class="hover:text-indigo-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === 0 ? 'disabled' : ''}>▲</button>
+                                <button onclick="shiftRulePosition('${item.id}', 1)" class="hover:text-indigo-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === parentArray.length - 1 ? 'disabled' : ''}>▼</button>
+                            </div>
+                            <span class="text-indigo-400 font-bold text-xs uppercase tracking-widest shrink-0">📁 Group</span>
+                            <input type="text" value="${escapeHtml(item.name || '')}" placeholder="Group Name" oninput="syncRuleFieldData('${item.id}', 'name', this.value)" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1 text-xs text-indigo-300 font-bold w-1/3 min-w-[120px]">
+                            
+                            <div class="flex gap-1 ml-auto shrink-0 font-sans">
+                                <button onclick="addNewRuleRow('${item.id}')" class="bg-blue-900/60 hover:bg-blue-800/80 border border-blue-700/60 text-blue-300 text-xs px-2 py-1 rounded cursor-pointer transition font-medium">+ Add Rule</button>
+                                <button onclick="deleteRuleRow('${item.id}')" class="bg-red-950 hover:bg-red-900/60 border border-red-800/60 text-red-400 text-xs py-1 px-2 rounded cursor-pointer transition font-semibold">Remove</button>
+                            </div>
                         </div>
-                        <div class="flex gap-1 ml-auto shrink-0 font-sans">
-                            <button onclick="executeSingleRule('${rule.id}')" class="bg-blue-900/60 hover:bg-blue-800/80 border border-blue-700/60 text-blue-300 text-xs px-2.5 py-1 rounded cursor-pointer transition font-medium">Run Rule</button>
-                            <button onclick="deleteRuleRow('${rule.id}', ${idx})" class="bg-red-950 hover:bg-red-900/60 border border-red-800/60 text-red-400 text-xs py-1 px-2 rounded cursor-pointer transition font-semibold">Remove</button>
-                        </div>
-                    </div>
-                    
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-2">
-                        <input type="text" value="${escapeHtml(rule.xpath)}" placeholder="XPath Statement" oninput="syncRuleFieldData('${rule.id}', 'xpath', this.value)" class="col-span-2 bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-gray-200">
-                        <select onchange="syncRuleFieldData('${rule.id}', 'action', this.value); renderRulesPipelineUi();" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-gray-300 focus:outline-none">
-                            <option value="addAttr" ${rule.action === 'addAttr' ? 'selected' : ''}>Add Attribute</option>
-                            <option value="removeAttr" ${rule.action === 'removeAttr' ? 'selected' : ''}>Remove Attribute</option>
-                            <option value="modifyAttr" ${rule.action === 'modifyAttr' ? 'selected' : ''}>Modify Attribute Value</option>
-                            <option value="modifyText" ${rule.action === 'modifyText' ? 'selected' : ''}>Modify Node Inner Text</option>
-                        </select>
-                        <input type="text" id="attrName-${rule.id}" value="${escapeHtml(rule.attrName)}" placeholder="Attr Name" ${isTextAction ? 'disabled' : ''} oninput="syncRuleFieldData('${rule.id}', 'attrName', this.value)" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-gray-200 disabled:opacity-30 disabled:placeholder-transparent">
-                    </div>
+                        <div class="flex flex-col gap-2 pl-4 border-l-2 border-indigo-900 ml-1 mt-1 empty:hidden" id="group-container-${item.id}"></div>
+                    `;
+                    container.appendChild(row);
+                    const subContainer = document.getElementById(`group-container-${item.id}`);
+                    if (item.rules && item.rules.length > 0) {
+                        item.rules.forEach(sub => renderItem(sub, item.rules, subContainer, true));
+                    }
+                } else {
+                    const row = document.createElement('div');
+                    row.className = `flex flex-col bg-gray-900 border ${isNested ? 'border-gray-800' : 'border-gray-700/80'} rounded-lg p-3 gap-2 transition ${!item.enabled ? 'opacity-50' : ''}`;
 
-                    <div class="grid grid-cols-1 gap-2">
-                        <input type="text" value="${escapeHtml(rule.value)}" placeholder="Value (use {value} to inject original text or attr)" oninput="syncRuleFieldData('${rule.id}', 'value', this.value)" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-emerald-400">
-                    </div>
-                `;
-                rulesContainer.appendChild(row);
-            });
+                    let errorHtml = '';
+                    if (item.errors && item.errors.length > 0) {
+                        errorHtml = `<div class="status-icon relative text-red-500 cursor-help text-sm">⚠️<div class="tooltip hidden absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 bg-red-950 border border-red-800 text-red-200 text-[10px] p-2 rounded w-48 shadow-lg whitespace-pre-wrap">${escapeHtml(item.errors.join('\n'))}</div></div>`;
+                    } else if (item.warnings && item.warnings.length > 0) {
+                        errorHtml = `<div class="status-icon relative text-amber-500 cursor-help text-sm">⚠️<div class="tooltip hidden absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 bg-amber-950 border border-amber-800 text-amber-200 text-[10px] p-2 rounded w-48 shadow-lg whitespace-pre-wrap">${escapeHtml(item.warnings.join('\n'))}</div></div>`;
+                    }
+
+                    row.innerHTML = `
+                        <div class="flex items-center gap-2 shrink-0">
+                            <input type="checkbox" ${item.enabled ? 'checked' : ''} onchange="syncRuleFieldData('${item.id}', 'enabled', this.checked); renderRulesPipelineUi();" class="w-4 h-4 rounded bg-gray-950 border-gray-700 text-blue-500 focus:ring-0 cursor-pointer">
+                            <div class="flex items-center gap-0.5 text-gray-500 font-sans font-bold min-w-[40px]">
+                                <button onclick="shiftRulePosition('${item.id}', -1)" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === 0 ? 'disabled' : ''}>▲</button>
+                                <button onclick="shiftRulePosition('${item.id}', 1)" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === parentArray.length - 1 ? 'disabled' : ''}>▼</button>
+                            </div>
+                            <input type="text" value="${escapeHtml(item.name || '')}" placeholder="Rule Name (Optional)" oninput="syncRuleFieldData('${item.id}', 'name', this.value)" class="bg-transparent border-none border-b border-gray-700 focus:border-blue-500 px-1 py-0.5 text-xs text-gray-400 font-bold focus:outline-none w-1/4 min-w-[100px]">
+                            
+                            ${errorHtml}
+
+                            <div class="flex gap-1 ml-auto shrink-0 font-sans">
+                                <button onclick="executeSingleRule('${item.id}')" class="bg-blue-900/60 hover:bg-blue-800/80 border border-blue-700/60 text-blue-300 text-xs px-2.5 py-1 rounded cursor-pointer transition font-medium">Run Rule</button>
+                                <button onclick="deleteRuleRow('${item.id}')" class="bg-red-950 hover:bg-red-900/60 border border-red-800/60 text-red-400 text-xs py-1 px-2 rounded cursor-pointer transition font-semibold">Remove</button>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                            <input type="text" value="${escapeHtml(item.xpath)}" placeholder="XPath Statement" oninput="syncRuleFieldData('${item.id}', 'xpath', this.value)" class="col-span-2 bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-gray-200">
+                            <select onchange="syncRuleFieldData('${item.id}', 'action', this.value); renderRulesPipelineUi();" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-gray-300 focus:outline-none">
+                                <option value="addAttr" ${item.action === 'addAttr' ? 'selected' : ''}>Add Attribute</option>
+                                <option value="removeAttr" ${item.action === 'removeAttr' ? 'selected' : ''}>Remove Attribute</option>
+                                <option value="modifyAttr" ${item.action === 'modifyAttr' ? 'selected' : ''}>Modify Attribute Value</option>
+                                <option value="modifyText" ${item.action === 'modifyText' ? 'selected' : ''}>Modify Node Inner Text</option>
+                                <option value="addNode" ${item.action === 'addNode' ? 'selected' : ''}>Add New Child Node</option>
+                            </select>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            ${['addAttr', 'modifyAttr', 'removeAttr'].includes(item.action) ? 
+                            `<input type="text" value="${escapeHtml(item.attrName || '')}" placeholder="Attribute Name (Tokens ok)" oninput="syncRuleFieldData('${item.id}', 'attrName', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-blue-400 font-mono ${item.action === 'removeAttr' ? 'sm:col-span-2' : ''}">` : ''}
+                            
+                            ${['addAttr', 'modifyAttr', 'modifyText', 'addNode'].includes(item.action) ? 
+                            `<input type="text" value="${escapeHtml(item.value || '')}" placeholder="Value expression. Use {attribute[\"name\"]}, {value} or {child[0]}" oninput="syncRuleFieldData('${item.id}', 'value', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono ${['modifyText', 'addNode'].includes(item.action) ? 'sm:col-span-2' : ''}">` : ''}
+                        </div>
+                    `;
+                    container.appendChild(row);
+                }
+            };
+
+            rulesList.forEach(item => renderItem(item, rulesList, rulesContainer, false));
         }
 
-        function applyTransformation(node, action, attrName, value) {
-            if (!node) return;
-            const currentAttrVal = attrName ? (node.getAttribute(attrName) || "") : "";
+        // ==========================================
+        // TOKEN REFACTOR SYSTEM: PARSERS AND EVALUATORS
+        // ==========================================
+
+        /**
+         * Resolves targeted attributes dynamically via Number indexing or Key strings.
+         */
+        function getAttributeValue(node, inner) {
+            if (!node || node.nodeType !== Node.ELEMENT_NODE) return "";
+            let isNum = /^-?\d+$/.test(inner);
+            let isQuoted = /^["'](.*?)["']$/.test(inner);
+
+            if (isQuoted) {
+                let key = inner.match(/^["'](.*?)["']$/)[1];
+                return node.getAttribute(key) || "";
+            } else if (isNum) {
+                let isNeg = inner.startsWith('-');
+                let val = Math.abs(parseInt(inner));
+                let idx = isNeg ? node.attributes.length - 1 - val : val;
+                if (idx >= 0 && idx < node.attributes.length) {
+                    return node.attributes[idx].value;
+                }
+            }
+            return "";
+        }
+
+        /**
+         * Resolves text contents of specific targeted direct elements/children.
+         */
+        function getChildElement(node, key, indexStr) {
+            if (!node || node.nodeType !== Node.ELEMENT_NODE) return null;
+            let elementChildren = Array.from(node.children);
             
-            let currentTextVal = "";
-            let textNode = null;
-            for (let child of node.childNodes) {
-                if (child.nodeType === Node.TEXT_NODE) {
-                    textNode = child;
-                    currentTextVal += child.nodeValue;
+            if (key !== null) {
+                elementChildren = elementChildren.filter(c => c.tagName === key);
+            }
+            
+            let isNeg = indexStr.startsWith('-');
+            let val = Math.abs(parseInt(indexStr));
+            let idx = isNeg ? elementChildren.length - 1 - val : val;
+            
+            if (idx >= 0 && idx < elementChildren.length) {
+                return elementChildren[idx];
+            }
+            return null;
+        }
+
+        function getAncestorElement(node, key, indexStr) {
+            if (!node || node.nodeType !== Node.ELEMENT_NODE) return null;
+            let current = node.parentNode;
+            let elements = [];
+            
+            while (current && current.nodeType === Node.ELEMENT_NODE) {
+                if (key === null || current.tagName === key) {
+                    elements.push(current);
+                }
+                current = current.parentNode;
+            }
+            
+            let isNeg = indexStr.startsWith('-');
+            let val = Math.abs(parseInt(indexStr));
+            let idx = isNeg ? elements.length - 1 - val : val;
+            
+            if (idx >= 0 && idx < elements.length) {
+                return elements[idx];
+            }
+            return null;
+        }
+
+        /**
+         * Standardizes slicing using python-like directional starts.
+         */
+        function applySlicing(str, startStr, takeStr) {
+            if (!str) return "";
+            let take = parseInt(takeStr);
+            let isNeg = startStr.startsWith('-');
+            let startVal = Math.abs(parseInt(startStr));
+
+            if (!isNeg) {
+                return str.substring(startVal, startVal + take);
+            } else {
+                let endIdx = str.length - startVal;
+                let beginIdx = Math.max(0, endIdx - take);
+                return str.substring(beginIdx, endIdx);
+            }
+        }
+
+        /**
+         * Standardizes array chunking behaviors via delimiters mappings.
+         */
+        function applySplitting(str, sep, startStr, takeStr) {
+            if (!str) return "";
+            let take = parseInt(takeStr);
+            let arr = str.split(sep);
+            let isNeg = startStr.startsWith('-');
+            let startVal = Math.abs(parseInt(startStr));
+
+            if (!isNeg) {
+                return arr.slice(startVal, startVal + take).join(sep);
+            } else {
+                let endIdx = arr.length - startVal;
+                let beginIdx = Math.max(0, endIdx - take);
+                return arr.slice(beginIdx, endIdx).join(sep);
+            }
+        }
+
+        /**
+         * Recursively computes functional tokens nested inside curly braces {}
+         */
+        function parseAndEvaluateToken(expr, node, originalNode, countersMap, context) {
+            if (!expr || !node) return "";
+            let modifiers = [];
+            let baseExpr = expr.trim();
+            
+            // Extract trailing modifiers dynamically mapping array splits/slices
+            while(true) {
+                let splitMatch = baseExpr.match(/\[(["'])([^"'\n]*?)\1:(-?\d+):(-?\d+)\]$/);
+                if (splitMatch) {
+                    modifiers.unshift({ type: 'split', sep: splitMatch[2], start: splitMatch[3], take: splitMatch[4] });
+                    baseExpr = baseExpr.slice(0, -splitMatch[0].length).trim();
+                    continue;
+                }
+                
+                let sliceMatch = baseExpr.match(/\[(-?\d+):(-?\d+)\]$/);
+                if (sliceMatch) {
+                    modifiers.unshift({ type: 'slice', start: sliceMatch[1], take: sliceMatch[2] });
+                    baseExpr = baseExpr.slice(0, -sliceMatch[0].length).trim();
+                    continue;
+                }
+                break;
+            }
+            
+            let val = "";
+            let processed = false;
+            
+            if (baseExpr.startsWith("parent(") && baseExpr.endsWith(")")) {
+                let inner = baseExpr.slice(7, -1).trim();
+                let parentNode = node.parentNode;
+                if (parentNode && parentNode.nodeType === Node.ELEMENT_NODE) {
+                    val = parseAndEvaluateToken(inner, parentNode, originalNode, countersMap, context);
+                }
+                processed = true;
+            }
+            else if (baseExpr.match(/^(?:attribute|att)\[(.*?)\]$/)) {
+                let inner = baseExpr.match(/^(?:attribute|att)\[(.*?)\]$/)[1].trim();
+                val = getAttributeValue(node, inner);
+                processed = true;
+            }
+            else if (baseExpr.startsWith("counter[") && baseExpr.endsWith("]")) {
+                let inner = baseExpr.slice(8, -1).trim();
+                inner = inner.replace(/^["']|["']$/g, '');
+                if (!countersMap.has(inner)) countersMap.set(inner, 1);
+                else countersMap.set(inner, countersMap.get(inner) + 1);
+                val = countersMap.get(inner).toString();
+                processed = true;
+            }
+            else if (baseExpr === "value") {
+                if (originalNode && originalNode.nodeType === Node.ATTRIBUTE_NODE) {
+                    val = originalNode.nodeValue || "";
+                }
+                processed = true;
+            } else {
+                let relMatch = baseExpr.match(/^(child|ancestor)(?:\[(["'])(.*?)\2\])?\[(-?\d+)\](?:\((.*)\))?$/);
+                if (relMatch) {
+                    let type = relMatch[1];
+                    let key = relMatch[3] || null;
+                    let indexStr = relMatch[4];
+                    let inner = relMatch[5] ? relMatch[5].trim() : null;
+
+                    let targetEl = type === 'child' ? getChildElement(node, key, indexStr) : getAncestorElement(node, key, indexStr);
+                    
+                    if (!targetEl) {
+                        val = "";
+                    } else if (inner) {
+                        val = parseAndEvaluateToken(inner, targetEl, originalNode, countersMap, context);
+                    } else {
+                        val = targetEl.textContent || "";
+                    }
+                    processed = true;
                 }
             }
 
-            const replaceTokens = (str, original) => {
-                return str.replace(/\{value\}/g, original || "");
+            if (!processed) {
+                if (context && context.errors) {
+                    let errMsg = `Unrecognized token format: {${baseExpr}}`;
+                    if (!context.errors.includes(errMsg)) {
+                        context.errors.push(errMsg);
+                    }
+                }
+            }
+
+            for (let mod of modifiers) {
+                if (mod.type === 'slice') {
+                    val = applySlicing(val, mod.start, mod.take);
+                } else if (mod.type === 'split') {
+                    val = applySplitting(val, mod.sep, mod.start, mod.take);
+                }
+            }
+            
+            if (processed && !val && val !== 0 && val !== "0" && node.nodeType === Node.ELEMENT_NODE) {
+                if (context && context.warnings) {
+                    let msg = `Token returned empty: {${expr}} on <${node.tagName}>`;
+                    if (context.warnings.length < 25 && !context.warnings.includes(msg)) {
+                        context.warnings.push(msg);
+                    }
+                }
+            }
+            
+            return val || "";
+        }
+
+        /**
+         * Resolves text chunks via mapping against the primary interpolating bracket braces '{ }'
+         */
+        const evaluateTemplate = (node, tmpl, originalMatchedNode, countersMap, context) => {
+            if (!tmpl) return "";
+            return tmpl.replace(/\{([^}]+)\}/g, (match, expr) => {
+                return parseAndEvaluateToken(expr, node, originalMatchedNode, countersMap, context);
+            });
+        };
+
+        /**
+         * Mutates a specified DOM node based on action requests using stateful counters & tokens.
+         * Resolves dynamic text slices, attribute name resolution, and XML child additions.
+         */
+        function applyTransformation(node, action, attrNameTemplate, valueTemplate, countersMap, originalMatchedNode, ruleContext) {
+            if (!node) return;
+
+            const evaluate = (tmpl) => {
+                return tmpl ? evaluateTemplate(node, tmpl, originalMatchedNode, countersMap, ruleContext) : "";
             };
 
-            switch (action) {
-                case 'addAttr':
-                    if (attrName) node.setAttribute(attrName, value);
-                    break;
-                case 'modifyAttr':
-                    if (attrName) {
-                        node.setAttribute(attrName, replaceTokens(value, currentAttrVal));
+            if (action === 'addAttr' || action === 'modifyAttr') {
+                const attrName = evaluate(attrNameTemplate);
+                const attrVal = evaluate(valueTemplate);
+                if (attrName) {
+                    node.setAttribute(attrName, attrVal);
+                }
+            } else if (action === 'removeAttr') {
+                const attrName = evaluate(attrNameTemplate);
+                if (attrName) {
+                    node.removeAttribute(attrName);
+                }
+            } else if (action === 'modifyText') {
+                let currentTextVal = "";
+                let textNode = null;
+                for (let child of node.childNodes) {
+                    if (child.nodeType === Node.TEXT_NODE) {
+                        textNode = child;
+                        currentTextVal += child.nodeValue;
                     }
-                    break;
-                case 'removeAttr':
-                    if (attrName) node.removeAttribute(attrName);
-                    break;
-                case 'modifyText':
-                    const resolvedText = replaceTokens(value, currentTextVal);
-                    if (textNode) {
-                        textNode.nodeValue = resolvedText;
-                    } else {
-                        node.textContent = resolvedText;
+                }
+                const finalVal = evaluate(valueTemplate);
+                if (textNode) {
+                    textNode.nodeValue = finalVal;
+                } else {
+                    node.textContent = finalVal;
+                }
+            } else if (action === 'addNode') {
+                const rawXml = evaluate(valueTemplate);
+                const parser = new DOMParser();
+                const tempDoc = parser.parseFromString("<root>" + rawXml + "</root>", "application/xml");
+                if (tempDoc.getElementsByTagName("parsererror")[0]) {
+                    if (ruleContext && ruleContext.errors && !ruleContext.errors.includes("XML parsing error inside injected raw child XML node template.")) {
+                        ruleContext.errors.push("XML parsing error inside injected raw child XML node template.");
                     }
-                    break;
+                    return;
+                }
+                const rootEl = tempDoc.documentElement;
+                while (rootEl.firstChild) {
+                    const imported = node.ownerDocument.importNode(rootEl.firstChild, true);
+                    node.appendChild(imported);
+                }
             }
         }
 
+        /**
+         * Compiles and evaluates a single pipeline rule against the input document.
+         * Outputs result directly to view 2 XML preview buffers.
+         * @param {string} id - Selected rule identifier token.
+         */
         function executeSingleRule(id) {
-            const rule = rulesList.find(r => r.id === id);
-            if (!rule || !rule.xpath.trim() || !xmlInput.value.trim()) return;
+            const found = findRuleDeep(id);
+            if (!found || found.item.type !== 'rule') return;
+            const rule = found.item;
+
+            if (!rule.xpath.trim() || !xmlInput.value.trim()) return;
 
             const parser = new DOMParser();
             let pipelineDoc = parser.parseFromString(xmlInput.value, "application/xml");
@@ -880,21 +1808,28 @@
             }
 
             try {
+                rule.errors = [];
+                rule.warnings = [];
+                const countersMap = new Map();
                 const result = pipelineDoc.evaluate(rule.xpath.trim(), pipelineDoc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
                 for (let i = 0; i < result.snapshotLength; i++) {
-                    let node = result.snapshotItem(i);
+                    let originalMatchedNode = result.snapshotItem(i);
+                    let node = originalMatchedNode;
                     if (node.nodeType === Node.ATTRIBUTE_NODE) node = node.ownerElement;
                     if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
                     if (node.nodeType !== Node.ELEMENT_NODE) continue;
 
-                    applyTransformation(node, rule.action, rule.attrName, rule.value);
+                    applyTransformation(node, rule.action, rule.attrName, rule.value, countersMap, originalMatchedNode, rule);
                 }
                 const serializer = new XMLSerializer();
                 xmlOutput.value = serializer.serializeToString(pipelineDoc);
                 formatXML('output');
                 clearError();
+                renderRulesPipelineUi();
             } catch (err) {
                 showError(`Execution failure running standalone rule parameter block: ${err.message}`);
+                rule.errors.push(err.message);
+                renderRulesPipelineUi();
             }
         }
 
@@ -908,39 +1843,73 @@
             }
 
             let processingSucceeded = true;
-            for (let idx = 0; idx < rulesList.length; idx++) {
-                const rule = rulesList[idx];
-                if (!rule.enabled || !rule.xpath.trim()) continue;
-                try {
-                    const result = pipelineDoc.evaluate(rule.xpath.trim(), pipelineDoc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-                    for (let i = 0; i < result.snapshotLength; i++) {
-                        let node = result.snapshotItem(i);
-                        if (node.nodeType === Node.ATTRIBUTE_NODE) node = node.ownerElement;
-                        if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
-                        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+            const countersMap = new Map(); // Reset counters before pipeline starts
 
-                        applyTransformation(node, rule.action, rule.attrName, rule.value);
+            const processRuleList = (list) => {
+                for (let idx = 0; idx < list.length; idx++) {
+                    const item = list[idx];
+                    if (!item.enabled) continue;
+                    
+                    if (item.type === 'group') {
+                        processRuleList(item.rules);
+                    } else if (item.type === 'rule' && item.xpath.trim()) {
+                        item.errors = [];
+                        item.warnings = [];
+                        try {
+                            const result = pipelineDoc.evaluate(item.xpath.trim(), pipelineDoc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                            for (let i = 0; i < result.snapshotLength; i++) {
+                                let originalMatchedNode = result.snapshotItem(i);
+                                let node = originalMatchedNode;
+                                if (node.nodeType === Node.ATTRIBUTE_NODE) node = node.ownerElement;
+                                if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
+                                if (node.nodeType !== Node.ELEMENT_NODE) continue;
+
+                                applyTransformation(node, item.action, item.attrName, item.value, countersMap, originalMatchedNode, item);
+                            }
+                        } catch (err) {
+                            showError(`Pipeline execution failure at rule '${item.name || 'Unnamed'}': ${err.message}`);
+                            item.errors.push(err.message);
+                            processingSucceeded = false;
+                            break;
+                        }
                     }
-                } catch (err) {
-                    showError(`Pipeline execution failure at rule step #${idx + 1}: ${err.message}`);
-                    processingSucceeded = false;
-                    break;
                 }
-            }
+            };
+
+            processRuleList(rulesList);
+
             if (processingSucceeded) {
                 const serializer = new XMLSerializer();
                 xmlOutput.value = serializer.serializeToString(pipelineDoc);
                 formatXML('output');
                 clearError();
             }
+            renderRulesPipelineUi();
         }
 
+        /**
+         * Triggers local JSON serialization and file downloads of registered automation pipelines.
+         */
         function exportRulesChain() {
             if (rulesList.length === 0) {
                 alert("Pipeline array is completely vacant.");
                 return;
             }
-            const blob = new Blob([JSON.stringify(rulesList, null, 2)], { type: 'application/json' });
+            // Strip out temporary errors/warnings before exporting
+            const safeList = JSON.parse(JSON.stringify(rulesList));
+            const traverse = (arr) => {
+                arr.forEach(a => {
+                    if (a.type === 'rule') {
+                        delete a.errors;
+                        delete a.warnings;
+                    } else if (a.type === 'group' && a.rules) {
+                        traverse(a.rules);
+                    }
+                });
+            };
+            traverse(safeList);
+
+            const blob = new Blob([JSON.stringify(safeList, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -951,6 +1920,10 @@
             URL.revokeObjectURL(url);
         }
 
+        /**
+         * Parses and imports an external JSON config representing pipeline rules.
+         * @param {Event} event - File Upload Event target containing the file descriptor.
+         */
         function importRulesChain(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -959,14 +1932,28 @@
                 try {
                     const parsed = JSON.parse(e.target.result);
                     if (Array.isArray(parsed)) {
-                        rulesList = parsed.map(item => ({
-                            id: item.id || (Date.now() + Math.random().toString(36).substring(2, 7)),
-                            enabled: item.enabled !== undefined ? item.enabled : true,
-                            xpath: item.xpath || '',
-                            action: item.action || 'addAttr',
-                            attrName: item.attrName || '',
-                            value: item.value || ''
-                        }));
+                        const processImport = (arr) => {
+                            return arr.map(item => {
+                                let base = {
+                                    id: item.id || (Date.now() + Math.random().toString(36).substring(2, 7)),
+                                    enabled: item.enabled !== undefined ? item.enabled : true,
+                                    type: item.type || 'rule',
+                                    name: item.name || ''
+                                };
+                                if (base.type === 'group') {
+                                    base.rules = processImport(item.rules || []);
+                                } else {
+                                    base.xpath = item.xpath || '';
+                                    base.action = item.action || 'addAttr';
+                                    base.attrName = item.attrName || '';
+                                    base.value = item.value || '';
+                                    base.errors = [];
+                                    base.warnings = [];
+                                }
+                                return base;
+                            });
+                        };
+                        rulesList = processImport(parsed);
                         saveRulesPipelineToStorage();
                         renderRulesPipelineUi();
                     } else {
@@ -980,25 +1967,35 @@
             event.target.value = ''; 
         }
 
+                /**
+         * Replaces dynamic HTML symbol entities preventing render injection risks.
+         * @param {string} str - Source parameter payload.
+         * @returns {string} Sanitized text blocks.
+         */
         function escapeHtml(str) {
             if (!str) return '';
             return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
 
+        /**
+         * Interrogates mutated XML document tree outputs to isolate exact nodes modified during
+         * execution. Highlights mutated nodes visually and adds badges (`[ADD]`/`[MOD]`) 
+         * using faded visual styling based on hierarchical distances.
+         */
         function runDiffComparisonHighlighter() {
             const outText = xmlOutput.value;
-            const outHighlightElement = document.getElementById('treeContainerOutput');
             
             if (!outText.trim() || !nodeMapInput.size || !nodeMapOutput.size) {
                 return;
             }
 
-            let directMutatedNodes = new Map(); // Node -> 'added' | 'modified'
+            let directMutatedNodes = new Map(); // Tracked Node -> mutation classification: 'added' | 'modified'
 
             for (let [outNode, outVisual] of nodeMapOutput.entries()) {
                 const outAbsPath = generateAbsoluteXPath(outNode);
                 let matchedInNode = null;
 
+                // Attempt corresponding path mapping resolution inside input registry
                 for (let [inNode, inVisual] of nodeMapInput.entries()) {
                     if (generateAbsoluteXPath(inNode) === outAbsPath) {
                         matchedInNode = inNode;
@@ -1011,6 +2008,7 @@
                 } else {
                     let hasAttributeDelta = false;
                     
+                    // Detect added or updated attribute structures
                     Array.from(outNode.attributes).forEach(attr => {
                         const inAttrVal = matchedInNode.getAttribute(attr.name);
                         if (inAttrVal === null || inAttrVal !== attr.value) {
@@ -1021,12 +2019,14 @@
                         }
                     });
 
+                    // Detect removed attribute configurations
                     Array.from(matchedInNode.attributes).forEach(inAttr => {
                         if (!outNode.hasAttribute(inAttr.name)) {
                             hasAttributeDelta = true;
                         }
                     });
 
+                    // Compare child text node segments
                     let childTextOut = "";
                     let childTextIn = "";
                     Array.from(outNode.childNodes).forEach(c => { if(c.nodeType === Node.TEXT_NODE) childTextOut += c.nodeValue.trim(); });
@@ -1038,6 +2038,7 @@
                 }
             }
 
+            // Assign structural color styles based on hierarchical distance from direct mutations
             for (let [outNode, outVisual] of nodeMapOutput.entries()) {
                 let currentDistance = -1;
 
@@ -1078,6 +2079,10 @@
             }
         }
 
+        /**
+         * Parses input/output XML, generates internal map references, and triggers UI tree draw loops.
+         * @param {string} targetWorkspace - Chosen workspace target ('input' | 'output')
+         */
         function parseAndRenderTree(targetWorkspace = 'input') {
             const isInput = (targetWorkspace === 'input');
             const targetTextArea = isInput ? xmlInput : xmlOutput;
@@ -1093,7 +2098,6 @@
                     xpathResultsContainer.innerHTML = '<div class="text-xs text-gray-500 italic">Provide a valid XPath expression above to compile isolated preview contexts.</div>';
                     highlightLayerInput.innerHTML = '';
                 }
-                clearError();
                 return;
             }
 
@@ -1130,6 +2134,11 @@
             }
         }
 
+        /**
+         * Generates an absolute XPath expression pointing directly to a specific DOM node.
+         * @param {Node} node - Target document element or attribute node.
+         * @returns {string} Fully qualified unique absolute XPath expression.
+         */
         function generateAbsoluteXPath(node) {
             if (!node || node.nodeType === Node.DOCUMENT_NODE) return "";
             if (node.nodeType === Node.ATTRIBUTE_NODE) {
@@ -1161,32 +2170,49 @@
             return path;
         }
 		
+        /**
+         * Injects target XPath patterns directly into global search inputs.
+         * @param {string} elementId - ID string of target input container.
+         */
         function copyXPathToSearch(elementId) {
-            const xpathVal = document.getElementById(elementId).value;
+            const el = (elementId === 'modalXPathAbsolute') ? modalXPathAbsolute : 
+                       (elementId === 'modalXPathSimilar') ? modalXPathSimilar : 
+                       document.getElementById(elementId);
+            const xpathVal = el.value;
             xpathInput.value = xpathVal;
             runXPathQuery();
             closeModal();
             xpathInput.focus();
         }
 
+        /**
+         * Recursively processes XML node hierarchies and constructs interactive DOM Tree components.
+         * Registers visual position arrays allowing bidirectional hover/click code highlighting.
+         * @param {Element} node - Target XML Element configuration.
+         * @param {boolean} isStaticPreview - Suppress event interaction setups when true.
+         * @param {Array<Object>} allTags - Extracted visual parsing metadata objects.
+         * @param {Array<number>} trackingIndexRef - Single element tracking array reference representing current pointer step.
+         * @param {string} workspaceSource - Identifies the active panel tree ('input' | 'output')
+         * @returns {HTMLDivElement} Configured interactive DOM layout container.
+         */
         function buildTreeNode(node, isStaticPreview = false, allTags = [], trackingIndexRef = [0], workspaceSource = 'input') {
             if (node.nodeType !== Node.ELEMENT_NODE) return null;
 
             const elementContainer = document.createElement('div');
-            elementContainer.className = "ml-4 my-1 border-l border-gray-700/50 pl-3 transition-all duration-150";
+            elementContainer.className = "ml-4 my-1 pl-1 transition-all duration-150";
 
             const tagLine = document.createElement('div');
-            tagLine.className = "flex flex-wrap items-center gap-1 py-0.5 text-blue-300 tree-row";
+            tagLine.className = "flex flex-wrap items-center gap-1 py-0.5 text-blue-300 tree-row relative";
 
             const startTag = document.createElement('span');
-            startTag.className = "text-gray-500 font-bold";
+            startTag.className = "text-gray-500 font-bold select-none";
             startTag.textContent = "<";
             tagLine.appendChild(startTag);
 
             const tagNameSpan = document.createElement('span');
-            tagNameSpan.className = "text-blue-400 font-medium px-1 rounded transition-all";
+            tagNameSpan.className = "text-blue-400 font-medium px-1 rounded transition-all select-none";
             if (!isStaticPreview && workspaceSource === 'input') {
-                tagNameSpan.classList.add('hover:underline', 'cursor-pointer');
+                tagNameSpan.classList.add('hover:underline', 'cursor-grab');
                 tagNameSpan.onclick = (e) => {
                     e.stopPropagation();
                     selectCodeMirrorRegion(matchingTagData ? matchingTagData.start : 0, matchingTagData ? matchingTagData.end : 0);
@@ -1195,6 +2221,17 @@
                     e.stopPropagation();
                     openNodeModal(node, null, workspaceSource);
                 };
+
+                tagNameSpan.addEventListener('mousedown', (e) => {
+                    if (e.button !== 0) return; 
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    isDragActive = true;
+                    dragThresholdPosition = { x: e.clientX, y: e.clientY };
+                    draggedXmlNode = node;
+                    draggedVisualContainer = elementContainer;
+                });
             }
             tagNameSpan.textContent = node.tagName;
             tagLine.appendChild(tagNameSpan);
@@ -1210,6 +2247,7 @@
                 targetMap.set(node, { 
                     tagNameSpan: tagNameSpan, 
                     container: elementContainer, 
+                    tagLine: tagLine, 
                     attributes: {},
                     sourceStart: matchingTagData ? matchingTagData.start : 0,
                     sourceEnd: matchingTagData ? matchingTagData.end : 0
@@ -1231,7 +2269,7 @@
 
             Array.from(node.attributes).forEach(attr => {
                 const attrSpan = document.createElement('span');
-                attrSpan.className = "ml-2 text-amber-400/90 text-xs px-1 rounded transition-all";
+                attrSpan.className = "ml-2 text-amber-400/90 text-xs px-1 rounded transition-all select-none";
                 if (!isStaticPreview && workspaceSource === 'input') {
                     attrSpan.classList.add('cursor-pointer', 'hover:bg-amber-500/10');
                     attrSpan.onclick = (e) => {
@@ -1252,7 +2290,7 @@
             });
 
             const endTag = document.createElement('span');
-            endTag.className = "text-gray-500 font-bold";
+            endTag.className = "text-gray-500 font-bold select-none";
             endTag.textContent = ">";
             tagLine.appendChild(endTag);
 
@@ -1266,9 +2304,8 @@
 
             if (textContent && !hasElementChildren) {
                 const valSpan = document.createElement('span');
-                valSpan.className = "mx-1 text-emerald-300 font-sans px-1 rounded transition-all";
+                valSpan.className = "mx-1 text-emerald-300 font-sans px-1 rounded transition-all cursor-pointer hover:underline bg-emerald-500/5";
                 if (!isStaticPreview && workspaceSource === 'input') {
-                    valSpan.classList.add('cursor-pointer', 'hover:underline', 'bg-emerald-500/5');
                     valSpan.onclick = (e) => {
                         e.stopPropagation();
                         selectCodeMirrorRegion(matchingTagData ? matchingTagData.start : 0, matchingTagData ? matchingTagData.end : 0);
@@ -1285,14 +2322,70 @@
             elementContainer.appendChild(tagLine);
 
             if (hasElementChildren) {
+                const childrenContainer = document.createElement('div');
+                childrenContainer.className = "children-wrapper transition-all duration-200 border-l border-gray-700/30 ml-2 pl-3";
+                
+                const toggleSpan = document.createElement('span');
+                toggleSpan.className = "absolute -left-4 top-1/2 -translate-y-1/2 cursor-pointer select-none text-gray-500 hover:text-white text-center text-[10px] transition-transform font-sans";
+                toggleSpan.innerHTML = "▼";
+                tagLine.appendChild(toggleSpan);
+
+                const foldedDots = document.createElement('span');
+                foldedDots.className = "text-gray-400 hidden select-none mx-1 text-xs tracking-widest bg-gray-800 px-1 rounded-sm";
+                foldedDots.textContent = "...";
+                tagLine.insertBefore(foldedDots, endTag);
+
+                const nodePath = workspaceSource === 'input' ? generateAbsoluteXPath(node) : null;
+                let isCollapsed = workspaceSource === 'input' ? collapsedNodePaths.has(nodePath) : false;
+
                 Array.from(node.childNodes).forEach(child => {
                     const childMarkup = buildTreeNode(child, isStaticPreview, allTags, trackingIndexRef, workspaceSource);
-                    if (childMarkup) elementContainer.appendChild(childMarkup);
+                    if (childMarkup) childrenContainer.appendChild(childMarkup);
                 });
+
                 const closeTagLine = document.createElement('div');
-                closeTagLine.className = "text-gray-500 font-bold py-0.5 tree-row";
+                closeTagLine.className = "text-gray-500 font-bold py-0.5 tree-row select-none transition-all";
                 closeTagLine.textContent = `</${node.tagName}>`;
-                
+
+                if (isCollapsed) {
+                    toggleSpan.style.transform = "rotate(-90deg)";
+                    childrenContainer.style.display = "none";
+                    foldedDots.classList.remove('hidden');
+                    closeTagLine.classList.remove('tree-row', 'py-0.5');
+                    closeTagLine.classList.add('inline');
+                    tagLine.appendChild(closeTagLine);
+                }
+
+                toggleSpan.onclick = (e) => {
+                    e.stopPropagation();
+                    isCollapsed = !isCollapsed;
+                    
+                    if (workspaceSource === 'input' && nodePath) {
+                        if (isCollapsed) collapsedNodePaths.add(nodePath);
+                        else collapsedNodePaths.delete(nodePath);
+                    }
+
+                    toggleSpan.style.transform = isCollapsed ? "rotate(-90deg)" : "rotate(0deg)";
+                    childrenContainer.style.display = isCollapsed ? "none" : "block";
+                    foldedDots.classList.toggle('hidden', !isCollapsed);
+                    
+                    if (isCollapsed) {
+                        closeTagLine.classList.remove('tree-row', 'py-0.5');
+                        closeTagLine.classList.add('inline');
+                        tagLine.appendChild(closeTagLine);
+                    } else {
+                        closeTagLine.classList.remove('inline');
+                        closeTagLine.classList.add('tree-row', 'py-0.5');
+                        elementContainer.appendChild(closeTagLine);
+                    }
+                };
+
+                if (!isStaticPreview) {
+                    const targetMap = (workspaceSource === 'input') ? nodeMapInput : nodeMapOutput;
+                    const visual = targetMap.get(node);
+                    if (visual) visual.closeTagLine = closeTagLine;
+                }
+
                 if (!isStaticPreview && workspaceSource === 'input') {
                     closeTagLine.addEventListener('click', (e) => {
                         if (e.target === closeTagLine) {
@@ -1305,12 +2398,15 @@
                         }
                     });
                 }
+                
+                elementContainer.appendChild(childrenContainer);
                 elementContainer.appendChild(closeTagLine);
+
             } else if (!textContent) {
                 endTag.textContent = " />";
             } else {
                 const closeInline = document.createElement('span');
-                closeInline.className = "text-gray-500 font-bold";
+                closeInline.className = "text-gray-500 font-bold select-none";
                 closeInline.textContent = `</${node.tagName}>`;
                 tagLine.appendChild(closeInline);
             }
@@ -1432,22 +2528,24 @@
             if (!currentXmlDoc) return;
             saveInputHistorySnapshot();
             try {
+                const countersMap = new Map();
                 const result = currentXmlDoc.evaluate(expr, currentXmlDoc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
                 if (result.snapshotLength === 0) {
                     alert("No elements were returned by the specified query.");
                     return;
                 }
-                const action = document.getElementById('massEditAction').value;
-                const attrName = document.getElementById('massEditAttrName').value.trim();
-                const newVal = document.getElementById('massEditValue').value;
+                const action = massEditAction.value;
+                const attrName = massEditAttrName.value;
+                const newVal = massEditValue.value;
 
                 for (let i = 0; i < result.snapshotLength; i++) {
-                    let node = result.snapshotItem(i);
+                    let originalMatchedNode = result.snapshotItem(i);
+                    let node = originalMatchedNode;
                     if (node.nodeType === Node.ATTRIBUTE_NODE) node = node.ownerElement;
                     if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
                     if (node.nodeType !== Node.ELEMENT_NODE) continue;
 
-                    applyTransformation(node, action, attrName, newVal);
+                    applyTransformation(node, action, attrName, newVal, countersMap, originalMatchedNode);
                 }
                 updateSourceFromDOM(currentXmlDoc);
             } catch (err) {
@@ -1555,7 +2653,7 @@
         }
 
         function highlightActiveScope() {
-            if (document.getElementById('view-panel-inspector').classList.contains('hidden')) return;
+            if (viewPanelInspector.classList.contains('hidden')) return;
 
             document.querySelectorAll('.highlight-target').forEach(el => el.classList.remove('highlight-target'));
             document.querySelectorAll('.highlight-ancestor').forEach(el => el.classList.remove('highlight-ancestor'));
@@ -1662,10 +2760,6 @@
             parseAndRenderTree('input');
         }
 
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && !nodeModal.classList.contains('hidden')) closeModal();
-        });
-
         function downloadXML() {
             const outputVal = xmlOutput.value || xmlInput.value;
             const blob = new Blob([outputVal], { type: 'application/xml' });
@@ -1684,7 +2778,6 @@
             parseAndRenderTree('input');
             parseAndRenderTree('output');
         });
-		
 		
         function generateSimilarXPath(node) {
             if (node.nodeType === Node.ATTRIBUTE_NODE) {
@@ -1753,6 +2846,22 @@
             nodeModal.classList.add('hidden');
             activeSelectedNodeContext = null;
             activeSelectedAttrContext = null;
+        }
+
+        function deleteTargetNodeFromModal() {
+            if (!activeSelectedNodeContext) return;
+            const doc = activeSelectedNodeContext.ownerDocument;
+            saveInputHistorySnapshot();
+            
+            if (activeSelectedAttrContext) {
+                activeSelectedNodeContext.removeAttribute(activeSelectedAttrContext);
+            } else {
+                if (activeSelectedNodeContext.parentNode) {
+                    activeSelectedNodeContext.parentNode.removeChild(activeSelectedNodeContext);
+                }
+            }
+            updateSourceFromDOM(doc);
+            closeModal();
         }
 
         function saveModalChanges() {
