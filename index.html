@@ -145,19 +145,24 @@
                 </div>
                 <div class="flex-1 relative overflow-hidden bg-gray-950">
                     <pre id="highlightLayerInput" class="highlight-layer absolute top-0 left-0 w-full h-full text-transparent select-none pointer-events-none overflow-auto m-0 border-none"></pre>
-                    <textarea id="xmlInput" spellcheck="false" class="xml-editor absolute top-0 left-0 w-full h-full bg-transparent text-transparent font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 overflow-auto m-0 border-none z-10 caret-white" placeholder="Paste or open your XML document here..."><company>
-   <department>
-      <employee id="101">
-         <name>Bob</name>
-      </employee>
-      <employee id="102">
-         <name>Bob</name>
-      </employee>
-      <employee id="103">
-         <name>Bob</name>
-      </employee>
-   </department>
-</company></textarea>
+                    <textarea id="xmlInput" spellcheck="false" class="xml-editor absolute top-0 left-0 w-full h-full bg-transparent text-transparent font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 overflow-auto m-0 border-none z-10 caret-white" placeholder="Paste or open your XML document here...">
+<root>
+    <item id="REF-100-200-300" category="a/b/c/d" value="Simple">
+        <sub-item>Alpha</sub-item>
+        <sub-item>Beta</sub-item>
+        <data code="12345">Payload</data>
+    </item>
+    
+    <item id="REF-999" category="x">
+    </item>
+
+    <container id="CONT-01">
+        <level1 id="L1-01">
+            <level2 id="L2-01">TargetValue</level2>
+        </level1>
+    </container>
+</root>
+                    </textarea>
                 </div>
             </div>
 
@@ -184,7 +189,7 @@
                             <button onclick="undoRuleDeletion()" class="underline font-bold text-amber-200 hover:text-white cursor-pointer">Restore (Ctrl+Z)</button>
                         </div>
                     </div>
-                    <div class="flex items-center gap-1.5">
+                    <div class="flex flex-wrap items-center gap-1.5">
                         <input type="file" id="rulesImportInput" accept=".json" class="hidden" onchange="importRulesChain(event)">
                         <button onclick="document.getElementById('rulesImportInput').click()" class="bg-gray-700 hover:bg-gray-600 text-[11px] font-medium py-1 px-2 rounded border border-gray-600 transition cursor-pointer">
                             📥 Import
@@ -192,13 +197,24 @@
                         <button onclick="exportRulesChain()" class="bg-gray-700 hover:bg-gray-600 text-[11px] font-medium py-1 px-2 rounded border border-gray-600 transition cursor-pointer">
                             📤 Export
                         </button>
+                        
+                        <!-- ADD BUTTONS -->
+                        <button onclick="addNewCounterRow()" class="bg-teal-700 hover:bg-teal-600 text-[11px] font-bold py-1 px-2 rounded transition cursor-pointer">
+                            + Cnt
+                        </button>
+                        <button onclick="addNewVariableRow()" class="bg-pink-700 hover:bg-pink-600 text-[11px] font-bold py-1 px-2 rounded transition cursor-pointer">
+                            + Var
+                        </button>
+                        <button onclick="addNewConstantRow()" class="bg-purple-700 hover:bg-purple-600 text-[11px] font-bold py-1 px-2 rounded transition cursor-pointer">
+                            + Const
+                        </button>
                         <button onclick="addNewGroupRow()" class="bg-indigo-600 hover:bg-indigo-500 text-[11px] font-bold py-1 px-2 rounded transition cursor-pointer">
                             📁 Group
                         </button>
                         <button onclick="addNewRuleRow()" class="bg-blue-600 hover:bg-blue-500 text-[11px] font-bold py-1 px-2 rounded transition cursor-pointer">
                             ➕ Rule
                         </button>
-                        <button onclick="executeRulesChain()" class="bg-emerald-600 hover:bg-emerald-500 text-[11px] font-bold py-1 px-2.5 rounded transition cursor-pointer shadow">
+                        <button onclick="executeRulesChain()" class="bg-emerald-600 hover:bg-emerald-500 text-[11px] font-bold py-1 px-2.5 rounded transition cursor-pointer shadow ml-2">
                             🚀 Run Pipeline
                         </button>
                     </div>
@@ -271,6 +287,13 @@
                 
                 <div class="space-y-3">
                     <div class="bg-gray-950 p-3 rounded border border-gray-800">
+                        <h3 class="text-amber-400 font-mono font-bold mb-1">{var["name"]} / {const["name"]} / {counter["name"]}</h3>
+                        <p class="text-xs">Extracts data from a previously declared Variable, Constant, or Counter in the current or parent group. Variables are destroyed when leaving their group.</p>
+                        <p class="text-xs text-gray-500 mt-1">Example: <span class="text-emerald-400">{var["user_id"]}</span></p>
+                        <p class="text-xs text-gray-500 mt-1">Counters return their current value and increment immediately after evaluation.</p>
+                    </div>
+
+                    <div class="bg-gray-950 p-3 rounded border border-gray-800">
                         <h3 class="text-amber-400 font-mono font-bold mb-1">{attribute[n]} / {attribute["name"]} / {att["name"]}</h3>
                         <p class="text-xs">Extracts an attribute from the currently evaluated element by numerical index or exact quoted key. (<code>att</code> is a valid shorthand alias).</p>
                         <p class="text-xs text-gray-500 mt-1">Example: <span class="text-emerald-400">id_{attribute["id"]}</span> → <span class="text-emerald-400">id_101</span></p>
@@ -303,12 +326,6 @@
                         <p class="text-xs">Available only when your XPath targets an attribute directly (e.g., <code class="bg-gray-800 px-1 rounded">//@id</code>). Inserts the value of that matched attribute.</p>
                     </div>
 
-                    <div class="bg-gray-950 p-3 rounded border border-gray-800">
-                        <h3 class="text-amber-400 font-mono font-bold mb-1">{counter["name"]}</h3>
-                        <p class="text-xs">Creates an auto-incrementing stateful counter. Resets after every pipeline run.</p>
-                        <p class="text-xs text-gray-500 mt-1">Example: <span class="text-emerald-400">item_{counter["c"]}</span> → <span class="text-emerald-400">item_1, item_2, item_3...</span></p>
-                    </div>
-
                     <h3 class="font-bold text-gray-200 mt-4 border-b border-gray-700 pb-1">Value Modifiers</h3>
                     
                     <div class="bg-gray-950 p-3 rounded border border-gray-800">
@@ -326,9 +343,10 @@
 
                     <h3 class="font-bold text-gray-200 mt-4 border-b border-gray-700 pb-1">Other Features</h3>
                     <ul class="list-disc list-inside text-xs text-gray-400 space-y-1">
-                        <li><strong>Groups:</strong> Organize multiple rules into foldable named groups.</li>
-                        <li><strong>Syntax Checking:</strong> The editor live-checks token syntax while you type. Invalid tokens show a red ⚠️ icon, empty evaluations show a yellow ⚠️ icon.</li>
-                        <li><strong>Restore Dom Tree:</strong> Use this button to clear your output preview and restore it exactly to the input state.</li>
+                        <li><strong>Groups:</strong> Organize multiple rules into foldable named groups. Can be nested inside other groups.</li>
+                        <li><strong>Shifting:</strong> Use ◀ and ▶ to move rules in and out of nested groups.</li>
+                        <li><strong>Prepending:</strong> New rules added to a scope appear at the top.</li>
+                        <li><strong>IF/ELSE Conditions:</strong> Set blocks to evaluate dynamically based on token results. False paths skip the block.</li>
                     </ul>
                 </div>
             </div>
@@ -447,6 +465,14 @@
         let dropIndicator = null;                  // Visual placement bar element
         let isDragActive = false;                  // Flag representing active drag execution state
         let dragThresholdPosition = { x: 0, y: 0 };// Starting cursor coordinates to isolate accidental micro-clicks
+
+        // ==========================================
+        // 2b. PIPELINE ITEMS DRAG AND DROP STATE VARIABLES
+        // ==========================================
+        let draggedPipelineItemId = null;          // Plucked item identifier during active drag operations
+        let activeDragTargetId = null;             // Target item identifier active on hover state
+        let activeDropAction = null;               // Selected position strategy ('before' | 'after' | 'inside-top' | 'inside-bottom')
+        let pipelineDropIndicator = null;          // Custom re-ordering border placement indicator bar
 
         // ==========================================
         // 3. PIPELINE RULES PANEL DOM REFERENCES & VARIABLES
@@ -1279,14 +1305,32 @@
             try {
                 const stored = localStorage.getItem('xml_automation_pipeline_rules_v2');
                 rulesList = stored ? JSON.parse(stored) : [];
-                rulesList.forEach(r => { 
-                    if (r.enabled === undefined) r.enabled = true; 
-                    if (r.type === 'rule') {
-                        if (r.attrName === undefined) r.attrName = '';
-                        r.errors = [];
-                        r.warnings = [];
-                    }
-                });
+                
+                // Deep normalization to handle new structural additions
+                const normalize = (arr) => {
+                    arr.forEach(r => {
+                        if (r.enabled === undefined) r.enabled = true;
+                        if (r.conditionMode === undefined) r.conditionMode = 'none';
+                        if (r.conditionExpr === undefined) r.conditionExpr = '';
+
+                        if (r.type === 'rule') {
+                            if (r.attrName === undefined) r.attrName = '';
+                            r.errors = []; r.warnings = [];
+                        } else if (r.type === 'variable' || r.type === 'constant' || r.type === 'counter') {
+                            if (r.varName === undefined) r.varName = '';
+                            if (r.value === undefined) r.value = '';
+                            if (r.type === 'counter') {
+                                if (r.value === '') r.value = '1';
+                                if (r.increment === undefined) r.increment = '1';
+                            }
+                            r.errors = []; r.warnings = [];
+                        } else if (r.type === 'group' && r.rules) {
+                            if (r.collapsed === undefined) r.collapsed = false;
+                            normalize(r.rules);
+                        }
+                    });
+                };
+                normalize(rulesList);
             } catch(e) {
                 rulesList = [];
             }
@@ -1301,7 +1345,7 @@
             const safeList = JSON.parse(JSON.stringify(rulesList));
             const traverse = (arr) => {
                 arr.forEach(a => {
-                    if (a.type === 'rule') {
+                    if (a.type !== 'group') {
                         delete a.errors;
                         delete a.warnings;
                     } else if (a.type === 'group' && a.rules) {
@@ -1313,46 +1357,99 @@
             localStorage.setItem('xml_automation_pipeline_rules_v2', JSON.stringify(safeList));
         }
 
+        // ==========================================
+        // FEATURE: Prepend New Pipeline Items
+        // ==========================================
+
         function addNewRuleRow(groupId = null) {
             const newRule = {
                 id: Date.now() + Math.random().toString(36).substring(2, 7),
                 type: 'rule',
                 name: '',
-                enabled: true,
+                enabled: true, conditionMode: 'none', conditionExpr: '',
                 xpath: '',
-                action: 'addAttr',
-                attrName: 'new_attribute',
-                value: '',
-                errors: [],
-                warnings: []
+                action: 'addAttr', attrName: 'new_attribute', value: '',
+                errors: [], warnings: []
             };
             if (groupId) {
-                const group = rulesList.find(r => r.id === groupId && r.type === 'group');
-                if (group) group.rules.push(newRule);
-            } else {
-                rulesList.push(newRule);
-            }
+                const group = findRuleDeep(groupId);
+                if (group && group.item && group.item.type === 'group') group.item.rules.unshift(newRule);
+            } else rulesList.unshift(newRule);
             saveRulesPipelineToStorage();
             renderRulesPipelineUi();
         }
 
-        function addNewGroupRow() {
-            rulesList.push({
+        function addNewCounterRow(groupId = null) {
+            const newCounter = {
                 id: Date.now() + Math.random().toString(36).substring(2, 7),
-                type: 'group',
-                name: 'New Group',
-                enabled: true,
-                rules: []
-            });
+                type: 'counter',
+                name: '', // Display Description
+                enabled: true, conditionMode: 'none', conditionExpr: '',
+                varName: 'my_counter', value: '1', increment: '1',
+                errors: [], warnings: []
+            };
+            if (groupId) {
+                const group = findRuleDeep(groupId);
+                if (group && group.item && group.item.type === 'group') group.item.rules.unshift(newCounter);
+            } else rulesList.unshift(newCounter);
             saveRulesPipelineToStorage();
             renderRulesPipelineUi();
         }
 
-        function findRuleDeep(id, array = rulesList) {
+        function addNewVariableRow(groupId = null) {
+            const newVar = {
+                id: Date.now() + Math.random().toString(36).substring(2, 7),
+                type: 'variable',
+                name: '', // Display Description
+                enabled: true, conditionMode: 'none', conditionExpr: '',
+                varName: 'my_var', value: '',
+                errors: [], warnings: []
+            };
+            if (groupId) {
+                const group = findRuleDeep(groupId);
+                if (group && group.item && group.item.type === 'group') group.item.rules.unshift(newVar);
+            } else rulesList.unshift(newVar);
+            saveRulesPipelineToStorage();
+            renderRulesPipelineUi();
+        }
+
+        function addNewConstantRow(groupId = null) {
+            const newConst = {
+                id: Date.now() + Math.random().toString(36).substring(2, 7),
+                type: 'constant',
+                name: '', // Display Description
+                enabled: true, conditionMode: 'none', conditionExpr: '',
+                varName: 'MY_CONST', value: '',
+                errors: [], warnings: []
+            };
+            if (groupId) {
+                const group = findRuleDeep(groupId);
+                if (group && group.item && group.item.type === 'group') group.item.rules.unshift(newConst);
+            } else rulesList.unshift(newConst);
+            saveRulesPipelineToStorage();
+            renderRulesPipelineUi();
+        }
+
+        function addNewGroupRow(groupId = null) {
+            const newGroup = {
+                id: Date.now() + Math.random().toString(36).substring(2, 7),
+                type: 'group', name: 'New Group',
+                enabled: true, conditionMode: 'none', conditionExpr: '',
+                rules: [], collapsed: false
+            };
+            if (groupId) {
+                const group = findRuleDeep(groupId);
+                if (group && group.item && group.item.type === 'group') group.item.rules.unshift(newGroup);
+            } else rulesList.unshift(newGroup);
+            saveRulesPipelineToStorage();
+            renderRulesPipelineUi();
+        }
+
+        function findRuleDeep(id, array = rulesList, parentGroup = null, parentArray = null, parentIndex = -1) {
             for (let i = 0; i < array.length; i++) {
-                if (array[i].id === id) return { item: array[i], array, index: i };
+                if (array[i].id === id) return { item: array[i], array, index: i, parentGroup, parentArray, parentIndex };
                 if (array[i].type === 'group' && array[i].rules) {
-                    let result = findRuleDeep(id, array[i].rules);
+                    let result = findRuleDeep(id, array[i].rules, array[i], array, i);
                     if (result) return result;
                 }
             }
@@ -1394,6 +1491,212 @@
             renderRulesPipelineUi();
         }
 
+        // Feature: Horizontal array manipulation allowing items to move to nested groups or parents
+        function shiftRuleDepth(id, direction) {
+            const found = findRuleDeep(id);
+            if (!found) return;
+
+            if (direction === 'in') {
+                if (found.index > 0 && found.array[found.index - 1].type === 'group') {
+                    const targetGroup = found.array[found.index - 1];
+                    const item = found.array.splice(found.index, 1)[0];
+                    targetGroup.rules.unshift(item); // Unshift directly to top of nested group
+                    saveRulesPipelineToStorage();
+                    renderRulesPipelineUi();
+                }
+            } else if (direction === 'out') {
+                if (found.parentArray) {
+                    const item = found.array.splice(found.index, 1)[0];
+                    found.parentArray.splice(found.parentIndex + 1, 0, item);
+                    saveRulesPipelineToStorage();
+                    renderRulesPipelineUi();
+                }
+            }
+        }
+
+        // ==========================================
+        // FEATURE: Collapsing Groups Handler
+        // ==========================================
+        function toggleGroupCollapse(id) {
+            const found = findRuleDeep(id);
+            if (found && found.item.type === 'group') {
+                found.item.collapsed = !found.item.collapsed;
+                saveRulesPipelineToStorage();
+                renderRulesPipelineUi();
+            }
+        }
+
+        // =========================================================
+        // FEATURE: Rules Pipeline Interactive Drag and Drop Handlers
+        // =========================================================
+        function onDragStart(e, id) {
+            // Prevent dragging if focus originates on input or interactive elements inside card
+            if (['INPUT', 'SELECT', 'OPTION', 'BUTTON', 'TEXTAREA'].includes(e.target.tagName)) {
+                e.preventDefault();
+                return;
+            }
+            e.stopPropagation(); // Block parent groups from intercepting drags initiated on child rules
+            e.dataTransfer.setData("text/plain", id);
+            e.dataTransfer.effectAllowed = "move";
+            draggedPipelineItemId = id;
+            
+            // Apply slight transparent visual state to active dragged row card
+            setTimeout(() => {
+                const row = document.getElementById(`pipeline-item-${id}`);
+                if (row) row.classList.add('opacity-45');
+            }, 0);
+        }
+
+        function onPipelineItemDragOver(e, targetId) {
+            e.preventDefault();
+            e.stopPropagation(); // Prevents parent groups from responding when dragging over child elements
+            
+            if (draggedPipelineItemId === targetId) {
+                hidePipelineDropIndicator();
+                return;
+            }
+            
+            const draggedInfo = findRuleDeep(draggedPipelineItemId);
+            const targetInfo = findRuleDeep(targetId);
+            if (!draggedInfo || !targetInfo) return;
+            
+            // Prevent dropping parent groups inside their own child nodes
+            if (draggedInfo.item.type === 'group' && draggedInfo.item.rules) {
+                const isChild = (parent, childId) => {
+                    return parent.rules.some(r => r.id === childId || (r.type === 'group' && isChild(r, childId)));
+                };
+                if (isChild(draggedInfo.item, targetId)) {
+                    hidePipelineDropIndicator();
+                    return;
+                }
+            }
+            
+            const targetRow = document.getElementById(`pipeline-item-${targetId}`);
+            if (!targetRow) return;
+            
+            const rect = targetRow.getBoundingClientRect();
+            const relativeY = e.clientY - rect.top;
+            const height = rect.height;
+            
+            let action = 'before';
+            if (targetInfo.item.type === 'group') {
+                // Determine if we are dragging near boundaries or aiming to drop inside nested scopes
+                if (relativeY < height * 0.25) {
+                    action = 'before';
+                } else if (relativeY > height * 0.75) {
+                    action = 'after';
+                } else {
+                    action = (relativeY < height * 0.5) ? 'inside-top' : 'inside-bottom';
+                }
+            } else {
+                action = (relativeY < height * 0.5) ? 'before' : 'after';
+            }
+            
+            activeDragTargetId = targetId;
+            activeDropAction = action;
+            
+            showPipelineDropIndicator(targetRow, action);
+        }
+
+        function showPipelineDropIndicator(targetRow, action) {
+            if (!pipelineDropIndicator) {
+                pipelineDropIndicator = document.createElement('div');
+                pipelineDropIndicator.className = "absolute pointer-events-none z-50 bg-blue-500 h-1 rounded transition-all duration-75 shadow";
+                document.body.appendChild(pipelineDropIndicator);
+            }
+            
+            const rect = targetRow.getBoundingClientRect();
+            
+            // Clean visual transition styles across all rules
+            document.querySelectorAll('.pipeline-drag-enter').forEach(el => {
+                el.classList.remove('pipeline-drag-enter', 'border-indigo-400', 'bg-indigo-900/10');
+            });
+            
+            if (action === 'inside-top' || action === 'inside-bottom') {
+                pipelineDropIndicator.style.display = 'none';
+                // Active feedback: Highlight the parent card indicating active scope boundary entrance
+                targetRow.classList.add('pipeline-drag-enter', 'border-indigo-400', 'bg-indigo-900/10');
+            } else {
+                pipelineDropIndicator.style.display = 'block';
+                pipelineDropIndicator.style.width = `${rect.width}px`;
+                pipelineDropIndicator.style.left = `${rect.left + window.scrollX}px`;
+                if (action === 'before') {
+                    pipelineDropIndicator.style.top = `${rect.top + window.scrollY - 3}px`;
+                } else {
+                    pipelineDropIndicator.style.top = `${rect.bottom + window.scrollY + 1}px`;
+                }
+            }
+        }
+
+        function hidePipelineDropIndicator() {
+            if (pipelineDropIndicator) {
+                pipelineDropIndicator.style.display = 'none';
+            }
+            document.querySelectorAll('.pipeline-drag-enter').forEach(el => {
+                el.classList.remove('pipeline-drag-enter', 'border-indigo-400', 'bg-indigo-900/10');
+            });
+        }
+
+        function onPipelineItemDrop(e, targetId) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            hidePipelineDropIndicator();
+            
+            if (!draggedPipelineItemId || draggedPipelineItemId === targetId) return;
+            
+            const draggedInfo = findRuleDeep(draggedPipelineItemId);
+            const targetInfo = findRuleDeep(targetId);
+            
+            if (!draggedInfo || !targetInfo) return;
+            
+            // Check if items share the same parent context array
+            const sameArray = draggedInfo.array === targetInfo.array;
+            
+            // Pluck target item out of origin array positions
+            const pluckedItem = draggedInfo.array.splice(draggedInfo.index, 1)[0];
+            
+            // Compensate target index if dragging down the same array (prevents offset mismatch bug)
+            let adjustedTargetIndex = targetInfo.index;
+            if (sameArray && draggedInfo.index < targetInfo.index) {
+                adjustedTargetIndex--;
+            }
+            
+            // Save state snapshot for programmatic restoration
+            saveInputHistorySnapshot(xmlInput.value); 
+            
+            try {
+                if (activeDropAction === 'inside-top') {
+                    // Moving a block into a different scope from the top unshifts it to the top
+                    targetInfo.item.rules.unshift(pluckedItem);
+                } else if (activeDropAction === 'inside-bottom') {
+                    // Moving a block into a different scope from the bottom appends it to the bottom
+                    targetInfo.item.rules.push(pluckedItem);
+                } else if (activeDropAction === 'before') {
+                    targetInfo.array.splice(adjustedTargetIndex, 0, pluckedItem);
+                } else if (activeDropAction === 'after') {
+                    targetInfo.array.splice(adjustedTargetIndex + 1, 0, pluckedItem);
+                }
+                
+                saveRulesPipelineToStorage();
+                renderRulesPipelineUi();
+                clearError();
+            } catch (err) {
+                showError(err.message);
+            }
+            
+            draggedPipelineItemId = null;
+            activeDragTargetId = null;
+            activeDropAction = null;
+        }
+
+        function onPipelineItemDragEnd(e, id) {
+            const row = document.getElementById(`pipeline-item-${id}`);
+            if (row) row.classList.remove('opacity-45');
+            hidePipelineDropIndicator();
+            draggedPipelineItemId = null;
+        }
+
         function syncRuleFieldData(id, key, value) {
             const found = findRuleDeep(id);
             if (found) {
@@ -1409,107 +1712,263 @@
             }, 1000);
         }
 
+        function updateSingleRuleErrorUI(item) {
+            const container = document.getElementById(`error-container-${item.id}`);
+            if (!container) return;
+
+            const found = findRuleDeep(item.id);
+            if (!found) return;
+
+            const idx = found.index;
+            const parentArray = found.array;
+            const isElse = item.conditionMode === 'else';
+            const prevItem = idx > 0 ? parentArray[idx-1] : null;
+            const isPrevIf = prevItem && prevItem.conditionMode === 'if';
+
+            let errorHtml = '';
+            if (item.errors && item.errors.length > 0) {
+                errorHtml = `<div class="status-icon relative text-red-500 cursor-help text-sm">⚠️<div class="tooltip hidden absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 bg-red-950 border border-red-800 text-red-200 text-[10px] p-2 rounded w-48 shadow-lg whitespace-pre-wrap">${escapeHtml(item.errors.join('\n'))}</div></div>`;
+            } else if (item.warnings && item.warnings.length > 0) {
+                errorHtml = `<div class="status-icon relative text-amber-500 cursor-help text-sm">⚠️<div class="tooltip hidden absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 bg-amber-950 border border-amber-800 text-amber-200 text-[10px] p-2 rounded w-48 shadow-lg whitespace-pre-wrap">${escapeHtml(item.warnings.join('\n'))}</div></div>`;
+            } else if (isElse && !isPrevIf) {
+                errorHtml = `<div class="status-icon relative text-red-500 cursor-help text-sm">⚠️<div class="tooltip hidden absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 bg-red-950 border border-red-800 text-red-200 text-[10px] p-2 rounded w-48 shadow-lg whitespace-pre-wrap">ELSE block is not directly preceded by an IF block and will be skipped.</div></div>`;
+            }
+            
+            container.innerHTML = errorHtml;
+        }
+
         function dryRunRuleSyntax(ruleId) {
             let found = findRuleDeep(ruleId);
-            if (!found || found.item.type !== 'rule') return;
-            let rule = found.item;
-            rule.errors = [];
+            if (!found || found.item.type === 'group') return;
+            let item = found.item;
+            item.errors = [];
+            item.warnings = [];
             
             const mockNode = document.createElement('dummy');
             let tempContext = { errors: [], warnings: [] }; 
-            if (rule.attrName) evaluateTemplate(mockNode, rule.attrName, null, new Map(), tempContext);
-            if (rule.value) evaluateTemplate(mockNode, rule.value, null, new Map(), tempContext);
             
-            rule.errors = tempContext.errors;
-            renderRulesPipelineUi();
+            const emptyScopeChain = [{ vars: new Map(), consts: new Map(), counters: new Map() }];
+            
+            if (item.attrName) evaluateTemplate(mockNode, item.attrName, null, tempContext, emptyScopeChain);
+            if (item.value) evaluateTemplate(mockNode, item.value, null, tempContext, emptyScopeChain);
+            if (item.conditionExpr) evaluateTemplate(mockNode, item.conditionExpr, null, tempContext, emptyScopeChain);
+            if (item.type === 'counter' && item.increment) evaluateTemplate(mockNode, item.increment, null, tempContext, emptyScopeChain);
+            
+            item.errors = tempContext.errors;
+            item.warnings = tempContext.warnings || [];
+            
+            updateSingleRuleErrorUI(item);
         }
 
         function renderRulesPipelineUi() {
             if (rulesList.length === 0) {
-                rulesContainer.innerHTML = `<div class="text-xs text-gray-500 italic py-2 text-center bg-gray-900/40 rounded border border-dashed border-gray-880">No rules registered. Click "+ Rule" or "📁 Group" to begin.</div>`;
+                rulesContainer.innerHTML = `<div class="text-xs text-gray-500 italic py-2 text-center bg-gray-900/40 rounded border border-dashed border-gray-880">No items registered. Click buttons above to begin.</div>`;
                 return;
             }
             rulesContainer.innerHTML = '';
             
-            const renderItem = (item, parentArray, container, isNested) => {
+            const renderItem = (item, parentArray, container, isNested, parentGroup) => {
                 const idx = parentArray.indexOf(item);
+                
+                // FEATURE: IF/ELSE Condition Binding & UI Locks
+                const isElse = item.conditionMode === 'else';
+                const prevItem = idx > 0 ? parentArray[idx-1] : null;
+                const isPrevIf = prevItem && prevItem.conditionMode === 'if';
+                
+                const effectiveEnabled = (isElse && isPrevIf) ? prevItem.enabled : item.enabled;
+                const checkboxState = effectiveEnabled ? 'checked' : '';
+                const checkboxDisabledAttr = (isElse) ? 'disabled' : '';
+                const opacityClass = !effectiveEnabled ? 'opacity-40' : '';
+
+                let errorHtml = '';
+                if (item.errors && item.errors.length > 0) {
+                    errorHtml = `<div class="status-icon relative text-red-500 cursor-help text-sm">⚠️<div class="tooltip hidden absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 bg-red-950 border border-red-800 text-red-200 text-[10px] p-2 rounded w-48 shadow-lg whitespace-pre-wrap">${escapeHtml(item.errors.join('\n'))}</div></div>`;
+                } else if (item.warnings && item.warnings.length > 0) {
+                    errorHtml = `<div class="status-icon relative text-amber-500 cursor-help text-sm">⚠️<div class="tooltip hidden absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 bg-amber-950 border border-amber-800 text-amber-200 text-[10px] p-2 rounded w-48 shadow-lg whitespace-pre-wrap">${escapeHtml(item.warnings.join('\n'))}</div></div>`;
+                } else if (isElse && !isPrevIf) {
+                    errorHtml = `<div class="status-icon relative text-red-500 cursor-help text-sm">⚠️<div class="tooltip hidden absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 bg-red-950 border border-red-800 text-red-200 text-[10px] p-2 rounded w-48 shadow-lg whitespace-pre-wrap">ELSE block is not directly preceded by an IF block and will be skipped.</div></div>`;
+                }
+
+                const condSelectHtml = `
+                    <select id="select-cond-${item.id}" onchange="syncRuleFieldData('${item.id}', 'conditionMode', this.value); renderRulesPipelineUi();" class="bg-gray-950 border border-gray-700 text-[10px] text-gray-400 rounded px-1 py-0.5 ml-1 focus:outline-none h-6">
+                        <option value="none" ${item.conditionMode === 'none' ? 'selected' : ''}>Normal</option>
+                        <option value="if" ${item.conditionMode === 'if' ? 'selected' : ''}>IF</option>
+                        <option value="else" ${item.conditionMode === 'else' ? 'selected' : ''}>ELSE</option>
+                    </select>
+                `;
+                
+                const condExprHtml = item.conditionMode === 'if' ? `
+                    <input type="text" id="input-condexpr-${item.id}" value="${escapeHtml(item.conditionExpr || '')}" placeholder="IF Condition evaluates to true if non-empty (e.g. {var['x']} or {child[0]})" oninput="syncRuleFieldData('${item.id}', 'conditionExpr', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-blue-900/50 rounded px-2.5 py-1.5 text-xs text-blue-300 w-full mb-2 font-mono">
+                ` : '';
+
+                // Premium visual drag handlebar icon
+                const dragHandle = `
+                    <span draggable="true" 
+                        ondragstart="onDragStart(event, '${item.id}')" 
+                        class="cursor-grab text-gray-500 hover:text-gray-300 font-bold select-none text-sm mr-1 leading-none self-center" 
+                        title="Drag to reorder">⠿</span>
+                `;
+
+                // Group Node Render Logic
                 if (item.type === 'group') {
+                    const isCollapsed = item.collapsed || false;
+                    const toggleCollapseBtn = `
+                        <button onclick="toggleGroupCollapse('${item.id}'); event.stopPropagation();" class="text-indigo-400 hover:text-indigo-200 px-1 py-0.5 cursor-pointer font-bold text-xs select-none">
+                            ${isCollapsed ? '▶' : '▼'}
+                        </button>
+                    `;
+
                     const row = document.createElement('div');
-                    row.className = `flex flex-col bg-gray-850 border border-indigo-700/50 rounded-lg p-2 gap-2 transition ${!item.enabled ? 'opacity-50' : ''}`;
+                    row.className = `flex flex-col bg-gray-850 border border-indigo-700/50 rounded-lg p-2 gap-2 transition-all ${opacityClass}`;
+                    row.setAttribute('id', `pipeline-item-${item.id}`);
+                    // row.setAttribute('draggable', 'true');
+                    // row.addEventListener('dragstart', (e) => onDragStart(e, item.id));
+                    row.addEventListener('dragover', (e) => onPipelineItemDragOver(e, item.id));
+                    row.addEventListener('dragleave', hidePipelineDropIndicator);
+                    row.addEventListener('drop', (e) => onPipelineItemDrop(e, item.id));
+                    row.addEventListener('dragend', (e) => onPipelineItemDragEnd(e, item.id));
+
                     row.innerHTML = `
-                        <div class="flex items-center gap-2 shrink-0">
-                            <input type="checkbox" ${item.enabled ? 'checked' : ''} onchange="syncRuleFieldData('${item.id}', 'enabled', this.checked); renderRulesPipelineUi();" class="w-4 h-4 rounded bg-gray-950 border-gray-700 text-blue-500 focus:ring-0 cursor-pointer">
-                            <div class="flex items-center gap-0.5 text-gray-500 font-sans font-bold min-w-[45px]">
-                                <button onclick="shiftRulePosition('${item.id}', -1)" class="hover:text-indigo-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === 0 ? 'disabled' : ''}>▲</button>
-                                <button onclick="shiftRulePosition('${item.id}', 1)" class="hover:text-indigo-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === parentArray.length - 1 ? 'disabled' : ''}>▼</button>
+                        <div class="flex flex-wrap items-center gap-2 shrink-0">
+                            ${dragHandle}
+                            ${toggleCollapseBtn}
+                            <input type="checkbox" id="checkbox-enabled-${item.id}" ${checkboxState} ${checkboxDisabledAttr} onchange="if(!this.disabled){syncRuleFieldData('${item.id}', 'enabled', this.checked); renderRulesPipelineUi();}" class="w-4 h-4 rounded bg-gray-950 border-gray-700 text-blue-500 focus:ring-0 ${isElse ? 'cursor-not-allowed' : 'cursor-pointer'}">
+                            <div class="flex items-center gap-0.5 text-gray-500 font-sans font-bold min-w-[95px]">
+                                <button onclick="shiftRuleDepth('${item.id}', 'out')" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${!isNested ? 'disabled' : ''}>◀</button>
+                                <button onclick="shiftRulePosition('${item.id}', -1)" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === 0 ? 'disabled' : ''}>▲</button>
+                                <button onclick="shiftRulePosition('${item.id}', 1)" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === parentArray.length - 1 ? 'disabled' : ''}>▼</button>
+                                <button onclick="shiftRuleDepth('${item.id}', 'in')" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === 0 || parentArray[idx-1].type !== 'group' ? 'disabled' : ''}>▶</button>
                             </div>
-                            <span class="text-indigo-400 font-bold text-xs uppercase tracking-widest shrink-0">📁 Group</span>
-                            <input type="text" value="${escapeHtml(item.name || '')}" placeholder="Group Name" oninput="syncRuleFieldData('${item.id}', 'name', this.value)" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1 text-xs text-indigo-300 font-bold w-1/3 min-w-[120px]">
+                            <span class="text-indigo-400 font-bold text-[10px] uppercase tracking-widest shrink-0">📁 Grp</span>
+                            ${condSelectHtml}
+                            <input type="text" id="input-name-${item.id}" value="${escapeHtml(item.name || '')}" placeholder="Group Name" oninput="syncRuleFieldData('${item.id}', 'name', this.value)" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1 text-xs text-indigo-300 font-bold w-1/4 min-w-[120px]">
                             
-                            <div class="flex gap-1 ml-auto shrink-0 font-sans">
-                                <button onclick="addNewRuleRow('${item.id}')" class="bg-blue-900/60 hover:bg-blue-800/80 border border-blue-700/60 text-blue-300 text-xs px-2 py-1 rounded cursor-pointer transition font-medium">+ Add Rule</button>
-                                <button onclick="deleteRuleRow('${item.id}')" class="bg-red-950 hover:bg-red-900/60 border border-red-800/60 text-red-400 text-xs py-1 px-2 rounded cursor-pointer transition font-semibold">Remove</button>
+                            <div id="error-container-${item.id}" class="empty:hidden flex items-center justify-center">${errorHtml}</div>
+                            
+                            <div class="flex flex-wrap gap-1 ml-auto shrink-0 font-sans">
+                                <button onclick="addNewGroupRow('${item.id}')" class="bg-indigo-900/60 hover:bg-indigo-800/80 border border-indigo-700/60 text-indigo-300 text-[10px] px-1.5 py-1 rounded cursor-pointer transition font-medium">+ Grp</button>
+                                <button onclick="addNewCounterRow('${item.id}')" class="bg-teal-900/60 hover:bg-teal-800/80 border border-teal-700/60 text-teal-300 text-[10px] px-1.5 py-1 rounded cursor-pointer transition font-medium">+ Cnt</button>
+                                <button onclick="addNewVariableRow('${item.id}')" class="bg-pink-900/60 hover:bg-pink-800/80 border border-pink-700/60 text-pink-300 text-[10px] px-1.5 py-1 rounded cursor-pointer transition font-medium">+ Var</button>
+                                <button onclick="addNewConstantRow('${item.id}')" class="bg-purple-900/60 hover:bg-purple-800/80 border border-purple-700/60 text-purple-300 text-[10px] px-1.5 py-1 rounded cursor-pointer transition font-medium">+ Const</button>
+                                <button onclick="addNewRuleRow('${item.id}')" class="bg-blue-900/60 hover:bg-blue-800/80 border border-blue-700/60 text-blue-300 text-[10px] px-1.5 py-1 rounded cursor-pointer transition font-medium">+ Rule</button>
+                                <button onclick="deleteRuleRow('${item.id}')" class="bg-red-950 hover:bg-red-900/60 border border-red-800/60 text-red-400 text-[10px] py-1 px-1.5 rounded cursor-pointer transition font-semibold">Rm</button>
                             </div>
                         </div>
-                        <div class="flex flex-col gap-2 pl-4 border-l-2 border-indigo-900 ml-1 mt-1 empty:hidden" id="group-container-${item.id}"></div>
+                        ${condExprHtml}
+                        <div class="flex flex-col gap-2 pl-4 border-l-2 border-indigo-900 ml-1 mt-1 empty:hidden ${isCollapsed ? 'hidden' : ''}" id="group-container-${item.id}"></div>
                     `;
                     container.appendChild(row);
                     const subContainer = document.getElementById(`group-container-${item.id}`);
                     if (item.rules && item.rules.length > 0) {
-                        item.rules.forEach(sub => renderItem(sub, item.rules, subContainer, true));
+                        item.rules.forEach(sub => renderItem(sub, item.rules, subContainer, true, item));
                     }
                 } else {
                     const row = document.createElement('div');
-                    row.className = `flex flex-col bg-gray-900 border ${isNested ? 'border-gray-800' : 'border-gray-700/80'} rounded-lg p-3 gap-2 transition ${!item.enabled ? 'opacity-50' : ''}`;
+                    row.className = `flex flex-col bg-gray-900 border ${isNested ? 'border-gray-800' : 'border-gray-700/80'} rounded-lg p-3 gap-2 transition-all ${opacityClass}`;
+                    row.setAttribute('id', `pipeline-item-${item.id}`);
+                    // row.setAttribute('draggable', 'true');
+                    // row.addEventListener('dragstart', (e) => onDragStart(e, item.id));
+                    row.addEventListener('dragover', (e) => onPipelineItemDragOver(e, item.id));
+                    row.addEventListener('dragleave', hidePipelineDropIndicator);
+                    row.addEventListener('drop', (e) => onPipelineItemDrop(e, item.id));
+                    row.addEventListener('dragend', (e) => onPipelineItemDragEnd(e, item.id));
 
-                    let errorHtml = '';
-                    if (item.errors && item.errors.length > 0) {
-                        errorHtml = `<div class="status-icon relative text-red-500 cursor-help text-sm">⚠️<div class="tooltip hidden absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 bg-red-950 border border-red-800 text-red-200 text-[10px] p-2 rounded w-48 shadow-lg whitespace-pre-wrap">${escapeHtml(item.errors.join('\n'))}</div></div>`;
-                    } else if (item.warnings && item.warnings.length > 0) {
-                        errorHtml = `<div class="status-icon relative text-amber-500 cursor-help text-sm">⚠️<div class="tooltip hidden absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 bg-amber-950 border border-amber-800 text-amber-200 text-[10px] p-2 rounded w-48 shadow-lg whitespace-pre-wrap">${escapeHtml(item.warnings.join('\n'))}</div></div>`;
+                    if (item.type === 'variable' || item.type === 'constant' || item.type === 'counter') {
+                        const isVar = item.type === 'variable';
+                        const isConst = item.type === 'constant';
+                        const badgeColor = isVar ? 'text-pink-400' : (isConst ? 'text-purple-400' : 'text-teal-400');
+                        const badgeText = isVar ? 'VAR' : (isConst ? 'CONST' : 'CNT');
+                        
+                        let fieldsHtml = '';
+                        if (item.type === 'counter') {
+                            fieldsHtml = `
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <input type="text" id="input-varname-${item.id}" value="${escapeHtml(item.varName || '')}" placeholder="Counter Name (Req)" oninput="syncRuleFieldData('${item.id}', 'varName', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs ${badgeColor} font-mono">
+                                    <input type="text" id="input-value-${item.id}" value="${escapeHtml(item.value || '')}" placeholder="Start Num (def: 1)" oninput="syncRuleFieldData('${item.id}', 'value', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono">
+                                    <input type="text" id="input-increment-${item.id}" value="${escapeHtml(item.increment || '')}" placeholder="Increment (def: 1)" oninput="syncRuleFieldData('${item.id}', 'increment', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono">
+                                </div>
+                            `;
+                        } else {
+                            fieldsHtml = `
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <input type="text" id="input-varname-${item.id}" value="${escapeHtml(item.varName || '')}" placeholder="${isVar?'Variable':'Constant'} Name (Req)" oninput="syncRuleFieldData('${item.id}', 'varName', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs ${badgeColor} font-mono">
+                                    <input type="text" id="input-value-${item.id}" value="${escapeHtml(item.value || '')}" placeholder="Value expression. Use {attribute[\\"name\\"]}, {var[\\"v\\"]}" oninput="syncRuleFieldData('${item.id}', 'value', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono">
+                                </div>
+                            `;
+                        }
+
+                        row.innerHTML = `
+                            <div class="flex items-center gap-2 shrink-0">
+                                ${dragHandle}
+                                <input type="checkbox" id="checkbox-enabled-${item.id}" ${checkboxState} ${checkboxDisabledAttr} onchange="if(!this.disabled){syncRuleFieldData('${item.id}', 'enabled', this.checked); renderRulesPipelineUi();}" class="w-4 h-4 rounded bg-gray-950 border-gray-700 text-blue-500 focus:ring-0 ${isElse ? 'cursor-not-allowed' : 'cursor-pointer'}">
+                                <div class="flex items-center gap-0.5 text-gray-500 font-sans font-bold min-w-[95px]">
+                                    <button onclick="shiftRuleDepth('${item.id}', 'out')" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${!isNested ? 'disabled' : ''}>◀</button>
+                                    <button onclick="shiftRulePosition('${item.id}', -1)" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === 0 ? 'disabled' : ''}>▲</button>
+                                    <button onclick="shiftRulePosition('${item.id}', 1)" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === parentArray.length - 1 ? 'disabled' : ''}>▼</button>
+                                    <button onclick="shiftRuleDepth('${item.id}', 'in')" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === 0 || parentArray[idx-1].type !== 'group' ? 'disabled' : ''}>▶</button>
+                                </div>
+                                <span class="${badgeColor} font-bold text-[10px] uppercase tracking-widest shrink-0 w-8">${badgeText}</span>
+                                ${condSelectHtml}
+                                <input type="text" id="input-name-${item.id}" value="${escapeHtml(item.name || '')}" placeholder="Optional info" oninput="syncRuleFieldData('${item.id}', 'name', this.value)" class="bg-transparent border-none border-b border-gray-700 focus:border-blue-500 px-1 py-0.5 text-xs text-gray-400 font-bold focus:outline-none w-1/4 min-w-[100px] w-full">
+                                
+                                <div id="error-container-${item.id}" class="empty:hidden flex items-center justify-center">${errorHtml}</div>
+
+                                <div class="flex gap-1 ml-auto shrink-0 font-sans">
+                                    <button onclick="deleteRuleRow('${item.id}')" class="bg-red-950 hover:bg-red-900/60 border border-red-800/60 text-red-400 text-xs py-1 px-2 rounded cursor-pointer transition font-semibold">Remove</button>
+                                </div>
+                            </div>
+                            ${condExprHtml}
+                            ${fieldsHtml}
+                        `;
+                    } else {
+                        row.innerHTML = `
+                            <div class="flex items-center gap-2 shrink-0">
+                                ${dragHandle}
+                                <input type="checkbox" id="checkbox-enabled-${item.id}" ${checkboxState} ${checkboxDisabledAttr} onchange="if(!this.disabled){syncRuleFieldData('${item.id}', 'enabled', this.checked); renderRulesPipelineUi();}" class="w-4 h-4 rounded bg-gray-950 border-gray-700 text-blue-500 focus:ring-0 ${isElse ? 'cursor-not-allowed' : 'cursor-pointer'}">
+                                <div class="flex items-center gap-0.5 text-gray-500 font-sans font-bold min-w-[95px]">
+                                    <button onclick="shiftRuleDepth('${item.id}', 'out')" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${!isNested ? 'disabled' : ''}>◀</button>
+                                    <button onclick="shiftRulePosition('${item.id}', -1)" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === 0 ? 'disabled' : ''}>▲</button>
+                                    <button onclick="shiftRulePosition('${item.id}', 1)" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === parentArray.length - 1 ? 'disabled' : ''}>▼</button>
+                                    <button onclick="shiftRuleDepth('${item.id}', 'in')" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === 0 || parentArray[idx-1].type !== 'group' ? 'disabled' : ''}>▶</button>
+                                </div>
+                                <span class="text-blue-400 font-bold text-[10px] uppercase tracking-widest shrink-0 w-8">RULE</span>
+                                ${condSelectHtml}
+                                <input type="text" id="input-name-${item.id}" value="${escapeHtml(item.name || '')}" placeholder="Rule Name (Optional)" oninput="syncRuleFieldData('${item.id}', 'name', this.value)" class="bg-transparent border-none border-b border-gray-700 focus:border-blue-500 px-1 py-0.5 text-xs text-gray-400 font-bold focus:outline-none w-1/4 min-w-[100px] w-full">
+                                
+                                <div id="error-container-${item.id}" class="empty:hidden flex items-center justify-center">${errorHtml}</div>
+
+                                <div class="flex gap-1 ml-auto shrink-0 font-sans">
+                                    <button onclick="executeSingleRule('${item.id}')" class="bg-blue-900/60 hover:bg-blue-800/80 border border-blue-700/60 text-blue-300 text-xs px-2.5 py-1 rounded cursor-pointer transition font-medium">Run</button>
+                                    <button onclick="deleteRuleRow('${item.id}')" class="bg-red-950 hover:bg-red-900/60 border border-red-800/60 text-red-400 text-xs py-1 px-2 rounded cursor-pointer transition font-semibold">Rm</button>
+                                </div>
+                            </div>
+                            ${condExprHtml}
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                <input type="text" id="input-xpath-${item.id}" value="${escapeHtml(item.xpath)}" placeholder="XPath Statement" oninput="syncRuleFieldData('${item.id}', 'xpath', this.value)" class="col-span-2 bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-gray-200">
+                                <select id="select-action-${item.id}" onchange="syncRuleFieldData('${item.id}', 'action', this.value); renderRulesPipelineUi();" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-gray-300 focus:outline-none">
+                                    <option value="addAttr" ${item.action === 'addAttr' ? 'selected' : ''}>Add Attribute</option>
+                                    <option value="removeAttr" ${item.action === 'removeAttr' ? 'selected' : ''}>Remove Attribute</option>
+                                    <option value="modifyAttr" ${item.action === 'modifyAttr' ? 'selected' : ''}>Modify Attribute Value</option>
+                                    <option value="modifyText" ${item.action === 'modifyText' ? 'selected' : ''}>Modify Node Inner Text</option>
+                                    <option value="addNode" ${item.action === 'addNode' ? 'selected' : ''}>Add New Child Node</option>
+                                </select>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                ${['addAttr', 'modifyAttr', 'removeAttr'].includes(item.action) ? 
+                                `<input type="text" id="input-attrname-${item.id}" value="${escapeHtml(item.attrName || '')}" placeholder="Attribute Name (Tokens ok)" oninput="syncRuleFieldData('${item.id}', 'attrName', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-blue-400 font-mono ${item.action === 'removeAttr' ? 'sm:col-span-2' : ''}">` : ''}
+                                
+                                ${['addAttr', 'modifyAttr', 'modifyText', 'addNode'].includes(item.action) ? 
+                                `<input type="text" id="input-value-${item.id}" value="${escapeHtml(item.value || '')}" placeholder="Value expression. Use {attribute[\\"name\\"]}, {value} or {var[\\"id\\"]}" oninput="syncRuleFieldData('${item.id}', 'value', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono ${['modifyText', 'addNode'].includes(item.action) ? 'sm:col-span-2' : ''}">` : ''}
+                            </div>
+                        `;
                     }
 
-                    row.innerHTML = `
-                        <div class="flex items-center gap-2 shrink-0">
-                            <input type="checkbox" ${item.enabled ? 'checked' : ''} onchange="syncRuleFieldData('${item.id}', 'enabled', this.checked); renderRulesPipelineUi();" class="w-4 h-4 rounded bg-gray-950 border-gray-700 text-blue-500 focus:ring-0 cursor-pointer">
-                            <div class="flex items-center gap-0.5 text-gray-500 font-sans font-bold min-w-[40px]">
-                                <button onclick="shiftRulePosition('${item.id}', -1)" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === 0 ? 'disabled' : ''}>▲</button>
-                                <button onclick="shiftRulePosition('${item.id}', 1)" class="hover:text-blue-400 p-0.5 cursor-pointer disabled:opacity-20" ${idx === parentArray.length - 1 ? 'disabled' : ''}>▼</button>
-                            </div>
-                            <input type="text" value="${escapeHtml(item.name || '')}" placeholder="Rule Name (Optional)" oninput="syncRuleFieldData('${item.id}', 'name', this.value)" class="bg-transparent border-none border-b border-gray-700 focus:border-blue-500 px-1 py-0.5 text-xs text-gray-400 font-bold focus:outline-none w-1/4 min-w-[100px]">
-                            
-                            ${errorHtml}
-
-                            <div class="flex gap-1 ml-auto shrink-0 font-sans">
-                                <button onclick="executeSingleRule('${item.id}')" class="bg-blue-900/60 hover:bg-blue-800/80 border border-blue-700/60 text-blue-300 text-xs px-2.5 py-1 rounded cursor-pointer transition font-medium">Run Rule</button>
-                                <button onclick="deleteRuleRow('${item.id}')" class="bg-red-950 hover:bg-red-900/60 border border-red-800/60 text-red-400 text-xs py-1 px-2 rounded cursor-pointer transition font-semibold">Remove</button>
-                            </div>
-                        </div>
-                        
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
-                            <input type="text" value="${escapeHtml(item.xpath)}" placeholder="XPath Statement" oninput="syncRuleFieldData('${item.id}', 'xpath', this.value)" class="col-span-2 bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-gray-200">
-                            <select onchange="syncRuleFieldData('${item.id}', 'action', this.value); renderRulesPipelineUi();" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-gray-300 focus:outline-none">
-                                <option value="addAttr" ${item.action === 'addAttr' ? 'selected' : ''}>Add Attribute</option>
-                                <option value="removeAttr" ${item.action === 'removeAttr' ? 'selected' : ''}>Remove Attribute</option>
-                                <option value="modifyAttr" ${item.action === 'modifyAttr' ? 'selected' : ''}>Modify Attribute Value</option>
-                                <option value="modifyText" ${item.action === 'modifyText' ? 'selected' : ''}>Modify Node Inner Text</option>
-                                <option value="addNode" ${item.action === 'addNode' ? 'selected' : ''}>Add New Child Node</option>
-                            </select>
-                        </div>
-
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            ${['addAttr', 'modifyAttr', 'removeAttr'].includes(item.action) ? 
-                            `<input type="text" value="${escapeHtml(item.attrName || '')}" placeholder="Attribute Name (Tokens ok)" oninput="syncRuleFieldData('${item.id}', 'attrName', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-blue-400 font-mono ${item.action === 'removeAttr' ? 'sm:col-span-2' : ''}">` : ''}
-                            
-                            ${['addAttr', 'modifyAttr', 'modifyText', 'addNode'].includes(item.action) ? 
-                            `<input type="text" value="${escapeHtml(item.value || '')}" placeholder="Value expression. Use {attribute[\"name\"]}, {value} or {child[0]}" oninput="syncRuleFieldData('${item.id}', 'value', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono ${['modifyText', 'addNode'].includes(item.action) ? 'sm:col-span-2' : ''}">` : ''}
-                        </div>
-                    `;
                     container.appendChild(row);
                 }
             };
 
-            rulesList.forEach(item => renderItem(item, rulesList, rulesContainer, false));
+            rulesList.forEach(item => renderItem(item, rulesList, rulesContainer, false, null));
         }
 
         // ==========================================
@@ -1619,10 +2078,34 @@
         }
 
         /**
+         * Retrieve variable, constant, or counter strictly from hierarchical scope mappings.
+         */
+        function getScopedValue(scopeChain, name, type) {
+            // Null scope signifies dry run context processing. We suppress runtime failures while actively typing.
+            if (!scopeChain) return ""; 
+
+            // Search backward up the scope stacks tracking active variable & constant blocks.
+            for (let i = scopeChain.length - 1; i >= 0; i--) {
+                const scope = scopeChain[i];
+                if (type === 'var' && scope.vars.has(name)) return scope.vars.get(name);
+                if (type === 'const' && scope.consts.has(name)) return scope.consts.get(name);
+                if (type === 'counter' && scope.counters.has(name)) {
+                    let counterObj = scope.counters.get(name);
+                    let currentVal = counterObj.current;
+                    // Increment for the NEXT time it is referenced
+                    counterObj.current += counterObj.step;
+                    return currentVal.toString();
+                }
+            }
+            // Block execution completely per requirement if access is unauthorized/undeclared
+            throw new Error(`Undeclared ${type === 'var' ? 'variable' : (type === 'const' ? 'constant' : 'counter')}: '${name}' cannot be accessed.`);
+        }
+
+        /**
          * Recursively computes functional tokens nested inside curly braces {}
          */
-        function parseAndEvaluateToken(expr, node, originalNode, countersMap, context) {
-            if (!expr || !node) return "";
+        function parseAndEvaluateToken(expr, node, originalNode, context, scopeChain) {
+            if (!expr || (!node && !expr.match(/^(?:var|const|counter)\[/))) return "";
             let modifiers = [];
             let baseExpr = expr.trim();
             
@@ -1649,9 +2132,9 @@
             
             if (baseExpr.startsWith("parent(") && baseExpr.endsWith(")")) {
                 let inner = baseExpr.slice(7, -1).trim();
-                let parentNode = node.parentNode;
+                let parentNode = node ? node.parentNode : null;
                 if (parentNode && parentNode.nodeType === Node.ELEMENT_NODE) {
-                    val = parseAndEvaluateToken(inner, parentNode, originalNode, countersMap, context);
+                    val = parseAndEvaluateToken(inner, parentNode, originalNode, context, scopeChain);
                 }
                 processed = true;
             }
@@ -1660,12 +2143,19 @@
                 val = getAttributeValue(node, inner);
                 processed = true;
             }
-            else if (baseExpr.startsWith("counter[") && baseExpr.endsWith("]")) {
-                let inner = baseExpr.slice(8, -1).trim();
-                inner = inner.replace(/^["']|["']$/g, '');
-                if (!countersMap.has(inner)) countersMap.set(inner, 1);
-                else countersMap.set(inner, countersMap.get(inner) + 1);
-                val = countersMap.get(inner).toString();
+            else if (baseExpr.match(/^(?:counter)\[(["'])(.*?)\1\]$/)) {
+                let inner = baseExpr.match(/^(?:counter)\[(["'])(.*?)\1\]$/)[2].trim();
+                val = getScopedValue(scopeChain, inner, 'counter');
+                processed = true;
+            }
+            else if (baseExpr.match(/^(?:var)\[(["'])(.*?)\1\]$/)) {
+                let inner = baseExpr.match(/^(?:var)\[(["'])(.*?)\1\]$/)[2].trim();
+                val = getScopedValue(scopeChain, inner, 'var');
+                processed = true;
+            }
+            else if (baseExpr.match(/^(?:const)\[(["'])(.*?)\1\]$/)) {
+                let inner = baseExpr.match(/^(?:const)\[(["'])(.*?)\1\]$/)[2].trim();
+                val = getScopedValue(scopeChain, inner, 'const');
                 processed = true;
             }
             else if (baseExpr === "value") {
@@ -1686,7 +2176,7 @@
                     if (!targetEl) {
                         val = "";
                     } else if (inner) {
-                        val = parseAndEvaluateToken(inner, targetEl, originalNode, countersMap, context);
+                        val = parseAndEvaluateToken(inner, targetEl, originalNode, context, scopeChain);
                     } else {
                         val = targetEl.textContent || "";
                     }
@@ -1711,7 +2201,7 @@
                 }
             }
             
-            if (processed && !val && val !== 0 && val !== "0" && node.nodeType === Node.ELEMENT_NODE) {
+            if (processed && !val && val !== 0 && val !== "0" && node && node.nodeType === Node.ELEMENT_NODE) {
                 if (context && context.warnings) {
                     let msg = `Token returned empty: {${expr}} on <${node.tagName}>`;
                     if (context.warnings.length < 25 && !context.warnings.includes(msg)) {
@@ -1726,22 +2216,32 @@
         /**
          * Resolves text chunks via mapping against the primary interpolating bracket braces '{ }'
          */
-        const evaluateTemplate = (node, tmpl, originalMatchedNode, countersMap, context) => {
+        const evaluateTemplate = (node, tmpl, originalMatchedNode, context, scopeChain) => {
             if (!tmpl) return "";
             return tmpl.replace(/\{([^}]+)\}/g, (match, expr) => {
-                return parseAndEvaluateToken(expr, node, originalMatchedNode, countersMap, context);
+                return parseAndEvaluateToken(expr, node, originalMatchedNode, context, scopeChain);
             });
         };
+
+        /**
+         * Evaluates dynamic values explicitly as strings into boolean conditionals 
+         */
+        function evaluateTruthiness(val) {
+            if (val === null || val === undefined) return false;
+            const s = val.toString().trim().toLowerCase();
+            if (s === '' || s === '0' || s === 'false' || s === 'null' || s === 'undefined') return false;
+            return true;
+        }
 
         /**
          * Mutates a specified DOM node based on action requests using stateful counters & tokens.
          * Resolves dynamic text slices, attribute name resolution, and XML child additions.
          */
-        function applyTransformation(node, action, attrNameTemplate, valueTemplate, countersMap, originalMatchedNode, ruleContext) {
+        function applyTransformation(node, action, attrNameTemplate, valueTemplate, originalMatchedNode, ruleContext, scopeChain) {
             if (!node) return;
 
             const evaluate = (tmpl) => {
-                return tmpl ? evaluateTemplate(node, tmpl, originalMatchedNode, countersMap, ruleContext) : "";
+                return tmpl ? evaluateTemplate(node, tmpl, originalMatchedNode, ruleContext, scopeChain) : "";
             };
 
             if (action === 'addAttr' || action === 'modifyAttr') {
@@ -1810,7 +2310,10 @@
             try {
                 rule.errors = [];
                 rule.warnings = [];
-                const countersMap = new Map();
+                
+                // Empty execution scope list because isolated rules ignore surrounding context layers.
+                const isolatedScopeList = [{ vars: new Map(), consts: new Map(), counters: new Map() }];
+
                 const result = pipelineDoc.evaluate(rule.xpath.trim(), pipelineDoc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
                 for (let i = 0; i < result.snapshotLength; i++) {
                     let originalMatchedNode = result.snapshotItem(i);
@@ -1819,7 +2322,7 @@
                     if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
                     if (node.nodeType !== Node.ELEMENT_NODE) continue;
 
-                    applyTransformation(node, rule.action, rule.attrName, rule.value, countersMap, originalMatchedNode, rule);
+                    applyTransformation(node, rule.action, rule.attrName, rule.value, originalMatchedNode, rule, isolatedScopeList);
                 }
                 const serializer = new XMLSerializer();
                 xmlOutput.value = serializer.serializeToString(pipelineDoc);
@@ -1843,19 +2346,97 @@
             }
 
             let processingSucceeded = true;
-            const countersMap = new Map(); // Reset counters before pipeline starts
 
-            const processRuleList = (list) => {
+            // Process list sequences resolving nested block operations while pushing/popping active rule scope trees
+            const processRuleList = (list, scopeChain) => {
+                const currentScope = { vars: new Map(), consts: new Map(), counters: new Map() };
+                const newScopeChain = [...scopeChain, currentScope];
+                let lastIfResult = null; // Track execution status matching sibling IF statements
+
                 for (let idx = 0; idx < list.length; idx++) {
+                    if (!processingSucceeded) break;
                     const item = list[idx];
-                    if (!item.enabled) continue;
                     
-                    if (item.type === 'group') {
-                        processRuleList(item.rules);
-                    } else if (item.type === 'rule' && item.xpath.trim()) {
-                        item.errors = [];
-                        item.warnings = [];
-                        try {
+                    item.errors = [];
+                    item.warnings = [];
+
+                    // Evaluate Logical Blocks / IF / ELSE Conditional Skip checks
+                    if (item.conditionMode === 'else') {
+                        const prevItem = idx > 0 ? list[idx-1] : null;
+                        if (!prevItem || prevItem.conditionMode !== 'if') {
+                            item.errors.push("ELSE block is not directly preceded by an IF block. Skipped.");
+                            continue;
+                        }
+                        if (!prevItem.enabled) continue; // IF is disabled; ELSE defaults to disabled
+                        if (lastIfResult === true) continue; // IF condition passed successfully, skipped ELSE path
+                        if (lastIfResult === null) continue; // IF broke due to runtime error, do not launch
+                    } else if (item.conditionMode === 'if') {
+                        if (!item.enabled) {
+                            lastIfResult = null;
+                            continue;
+                        }
+                        const mockNode = pipelineDoc.documentElement;
+                        const condVal = evaluateTemplate(mockNode, item.conditionExpr || "", null, {errors:[], warnings:[]}, newScopeChain);
+                        lastIfResult = evaluateTruthiness(condVal);
+                        
+                        if (!lastIfResult) continue; // Condition eval returned false
+                    } else {
+                        lastIfResult = null;
+                        if (!item.enabled) continue;
+                    }
+
+                    try {
+                        if (item.type === 'group') {
+                            processRuleList(item.rules, newScopeChain);
+                        } else if (item.type === 'variable') {
+                            if (!item.varName || !item.varName.trim()) throw new Error("Variable declaration identifier is required.");
+                            
+                            const varName = item.varName.trim();
+                            const val = evaluateTemplate(pipelineDoc.documentElement, item.value || "", null, {errors:[], warnings:[]}, newScopeChain);
+                            
+                            // Re-declare functionality replaces closest tracked var down the hierarchy line.
+                            let updated = false;
+                            for (let s = newScopeChain.length - 1; s >= 0; s--) {
+                                if (newScopeChain[s].vars.has(varName)) {
+                                    newScopeChain[s].vars.set(varName, val);
+                                    updated = true;
+                                    break;
+                                }
+                            }
+                            if (!updated) currentScope.vars.set(varName, val);
+                            
+                        } else if (item.type === 'constant') {
+                            if (!item.varName || !item.varName.trim()) throw new Error("Constant declaration identifier is required.");
+                            
+                            const constName = item.varName.trim();
+                            for (let s = newScopeChain.length - 1; s >= 0; s--) {
+                                if (newScopeChain[s].consts.has(constName)) {
+                                    throw new Error(`Constant constraint violation: '${constName}' has already been bound in active scope limit.`);
+                                }
+                            }
+                            const val = evaluateTemplate(pipelineDoc.documentElement, item.value || "", null, {errors:[], warnings:[]}, newScopeChain);
+                            currentScope.consts.set(constName, val);
+
+                        } else if (item.type === 'counter') {
+                            if (!item.varName || !item.varName.trim()) throw new Error("Counter declaration identifier is required.");
+                            const counterName = item.varName.trim();
+                            
+                            const startStr = evaluateTemplate(pipelineDoc.documentElement, item.value || "1", null, {errors:[], warnings:[]}, newScopeChain);
+                            const incStr = evaluateTemplate(pipelineDoc.documentElement, item.increment || "1", null, {errors:[], warnings:[]}, newScopeChain);
+                            const startNum = parseFloat(startStr) || 1;
+                            const incNum = parseFloat(incStr) || 1;
+                            
+                            let updated = false;
+                            for (let s = newScopeChain.length - 1; s >= 0; s--) {
+                                if (newScopeChain[s].counters.has(counterName)) {
+                                    newScopeChain[s].counters.set(counterName, { current: startNum, step: incNum });
+                                    updated = true;
+                                    break;
+                                }
+                            }
+                            if (!updated) currentScope.counters.set(counterName, { current: startNum, step: incNum });
+
+                        } else if (item.type === 'rule' && item.xpath.trim()) {
                             const result = pipelineDoc.evaluate(item.xpath.trim(), pipelineDoc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
                             for (let i = 0; i < result.snapshotLength; i++) {
                                 let originalMatchedNode = result.snapshotItem(i);
@@ -1864,19 +2445,20 @@
                                 if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
                                 if (node.nodeType !== Node.ELEMENT_NODE) continue;
 
-                                applyTransformation(node, item.action, item.attrName, item.value, countersMap, originalMatchedNode, item);
+                                applyTransformation(node, item.action, item.attrName, item.value, originalMatchedNode, item, newScopeChain);
                             }
-                        } catch (err) {
-                            showError(`Pipeline execution failure at rule '${item.name || 'Unnamed'}': ${err.message}`);
-                            item.errors.push(err.message);
-                            processingSucceeded = false;
-                            break;
                         }
+                    } catch (err) {
+                        showError(`Pipeline Execution Aborted at [${item.type.toUpperCase()}] block: ${err.message}`);
+                        item.errors.push(err.message);
+                        processingSucceeded = false;
+                        break;
                     }
                 }
+                // Memory implicitly drops/dereferences the current scope upon execution closure avoiding leaks.
             };
 
-            processRuleList(rulesList);
+            processRuleList(rulesList, []);
 
             if (processingSucceeded) {
                 const serializer = new XMLSerializer();
@@ -1899,7 +2481,7 @@
             const safeList = JSON.parse(JSON.stringify(rulesList));
             const traverse = (arr) => {
                 arr.forEach(a => {
-                    if (a.type === 'rule') {
+                    if (a.type !== 'group') {
                         delete a.errors;
                         delete a.warnings;
                     } else if (a.type === 'group' && a.rules) {
@@ -1937,11 +2519,20 @@
                                 let base = {
                                     id: item.id || (Date.now() + Math.random().toString(36).substring(2, 7)),
                                     enabled: item.enabled !== undefined ? item.enabled : true,
+                                    conditionMode: item.conditionMode || 'none',
+                                    conditionExpr: item.conditionExpr || '',
                                     type: item.type || 'rule',
                                     name: item.name || ''
                                 };
                                 if (base.type === 'group') {
                                     base.rules = processImport(item.rules || []);
+                                    base.collapsed = item.collapsed !== undefined ? item.collapsed : false;
+                                } else if (base.type === 'variable' || base.type === 'constant' || base.type === 'counter') {
+                                    base.varName = item.varName || '';
+                                    base.value = item.value || '';
+                                    if (base.type === 'counter') base.increment = item.increment || '1';
+                                    base.errors = [];
+                                    base.warnings = [];
                                 } else {
                                     base.xpath = item.xpath || '';
                                     base.action = item.action || 'addAttr';
@@ -1967,7 +2558,7 @@
             event.target.value = ''; 
         }
 
-                /**
+        /**
          * Replaces dynamic HTML symbol entities preventing render injection risks.
          * @param {string} str - Source parameter payload.
          * @returns {string} Sanitized text blocks.
@@ -2528,7 +3119,6 @@
             if (!currentXmlDoc) return;
             saveInputHistorySnapshot();
             try {
-                const countersMap = new Map();
                 const result = currentXmlDoc.evaluate(expr, currentXmlDoc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
                 if (result.snapshotLength === 0) {
                     alert("No elements were returned by the specified query.");
@@ -2537,6 +3127,8 @@
                 const action = massEditAction.value;
                 const attrName = massEditAttrName.value;
                 const newVal = massEditValue.value;
+                
+                const isolatedScopeList = [{ vars: new Map(), consts: new Map(), counters: new Map() }];
 
                 for (let i = 0; i < result.snapshotLength; i++) {
                     let originalMatchedNode = result.snapshotItem(i);
@@ -2545,7 +3137,8 @@
                     if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
                     if (node.nodeType !== Node.ELEMENT_NODE) continue;
 
-                    applyTransformation(node, action, attrName, newVal, countersMap, originalMatchedNode);
+                    // Execute without a shared active contextual loop scope block mapping. 
+                    applyTransformation(node, action, attrName, newVal, originalMatchedNode, null, isolatedScopeList);
                 }
                 updateSourceFromDOM(currentXmlDoc);
             } catch (err) {
