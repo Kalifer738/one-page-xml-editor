@@ -2268,9 +2268,9 @@
                             item.errors.push("ELSE block is not directly preceded by an IF block. Skipped.");
                             continue;
                         }
-                        if (!prevItem.enabled) continue; 
-                        if (lastIfResult === true) continue; 
-                        if (lastIfResult === null) continue; 
+                        if (!prevItem.enabled) continue;
+                        if (lastIfResult === true) continue;
+                        if (lastIfResult === null) continue;
                     } else if (item.conditionMode === 'if') {
                         if (!item.enabled) {
                             lastIfResult = null;
