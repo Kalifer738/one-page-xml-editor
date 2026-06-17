@@ -453,6 +453,11 @@
         let xpathDebounceTimer = null;             // Handler for debouncing rapid XPath queries
         let activeLastMatchedSnapshotRawText = ""; // XML text buffer holding results of current XPath query
         let inputHistoryStack = [];                // XML string modification stack for editor UNDO
+        
+        // Performance Override Variables
+        let forceRenderInputTree = false;          // True if user overrides the large-file lazy tree skip
+        let forceRenderOutputTree = false;         // True if user overrides on the pipeline comparison side
+        let activeHighlightDebounceTimer = null;   // Scroll/Scope highlighting debouncer
 
         // ==========================================
         // 2a. DRAG AND DROP XML REORGANIZER STATE VARIABLES
@@ -761,8 +766,15 @@
         xmlInput.addEventListener('input', (e) => {
             parseAndRenderTree('input');
         });
-        xmlInput.addEventListener('keyup', highlightActiveScope);
-        xmlInput.addEventListener('click', highlightActiveScope);
+        
+        // Debounce structural scope highlighting on keyboard/navigation actions
+        xmlInput.addEventListener('keyup', scheduleHighlightActiveScope);
+        xmlInput.addEventListener('click', scheduleHighlightActiveScope);
+
+        function scheduleHighlightActiveScope() {
+            clearTimeout(activeHighlightDebounceTimer);
+            activeHighlightDebounceTimer = setTimeout(highlightActiveScope, 80);
+        }
 
         // Handles direct local filesystem uploads
         fileInput.addEventListener('change', function(e) {
@@ -772,6 +784,9 @@
             reader.onload = function(evt) {
                 xmlInput.value = evt.target.result;
                 inputHistoryStack = [];
+                // Reset size overrides when opening a new file
+                forceRenderInputTree = false;
+                forceRenderOutputTree = false;
                 updateInputUndoButtonState();
                 formatXML('input');
             };
@@ -1004,7 +1019,7 @@
                 clearError();
             }
             updateInputUndoButtonState();
-            highlightActiveScope();
+            scheduleHighlightActiveScope();
         }
 
         /**
@@ -1034,7 +1049,7 @@
                 viewPanelInspector.classList.remove('hidden');
                 viewPanelInspector.classList.add('flex');
                 tabInspector.className = "px-4 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer bg-blue-600 text-white shadow-md";
-                highlightActiveScope();
+                scheduleHighlightActiveScope();
             } else if (targetMode === 'pipeline') {
                 viewPanelPipeline.classList.remove('hidden');
                 viewPanelPipeline.classList.add('flex');
@@ -1306,7 +1321,7 @@
             if (sourceStart !== undefined && sourceEnd !== undefined) {
                 xmlInput.focus();
                 xmlInput.setSelectionRange(sourceStart, sourceEnd);
-                highlightActiveScope();
+                scheduleHighlightActiveScope();
                 
                 const xmlString = xmlInput.value;
                 const linesBefore = xmlString.substring(0, sourceStart).split('\n').length - 1;
@@ -1446,7 +1461,7 @@
                 xmlInput.setSelectionRange(start + nextLine.length + 1, end + nextLine.length + 1);
             }
             parseAndRenderTree('input');
-            highlightActiveScope();
+            scheduleHighlightActiveScope();
         }
 
         /**
@@ -2183,13 +2198,17 @@
          */
         function getAttributeValue(node, inner) {
             if (!node || node.nodeType !== Node.ELEMENT_NODE) return "";
-            let isNum = /^-?\d+$/.test(inner);
-            let isQuoted = /^["'](.*?)["']$/.test(inner);
+            
+            // Fast paths to avoid regex allocations
+            if (inner.startsWith('"') && inner.endsWith('"')) {
+                return node.getAttribute(inner.slice(1, -1)) || "";
+            }
+            if (inner.startsWith("'") && inner.endsWith("'")) {
+                return node.getAttribute(inner.slice(1, -1)) || "";
+            }
 
-            if (isQuoted) {
-                let key = inner.match(/^["'](.*?)["']$/)[1];
-                return node.getAttribute(key) || "";
-            } else if (isNum) {
+            let isNum = /^-?\d+$/.test(inner);
+            if (isNum) {
                 let isNeg = inner.startsWith('-');
                 let val = Math.abs(parseInt(inner));
                 let idx = isNeg ? node.attributes.length - 1 - val : val;
@@ -2205,18 +2224,25 @@
          */
         function getChildElement(node, key, indexStr) {
             if (!node || node.nodeType !== Node.ELEMENT_NODE) return null;
-            let elementChildren = Array.from(node.children);
             
-            if (key !== null) {
-                elementChildren = elementChildren.filter(c => c.tagName === key);
+            // Linear loop directly over native child elements array avoiding full collection filters
+            let elementChildren = node.children;
+            let matchedCount = 0;
+            let matches = [];
+            
+            for (let i = 0; i < elementChildren.length; i++) {
+                let child = elementChildren[i];
+                if (key === null || child.tagName === key) {
+                    matches.push(child);
+                }
             }
             
             let isNeg = indexStr.startsWith('-');
             let val = Math.abs(parseInt(indexStr));
-            let idx = isNeg ? elementChildren.length - 1 - val : val;
+            let idx = isNeg ? matches.length - 1 - val : val;
             
-            if (idx >= 0 && idx < elementChildren.length) {
-                return elementChildren[idx];
+            if (idx >= 0 && idx < matches.length) {
+                return matches[idx];
             }
             return null;
         }
@@ -2336,7 +2362,8 @@
             } else if (action === 'modifyText') {
                 let currentTextVal = "";
                 let textNode = null;
-                for (let child of node.childNodes) {
+                for (let i = 0; i < node.childNodes.length; i++) {
+                    let child = node.childNodes[i];
                     if (child.nodeType === Node.TEXT_NODE) {
                         textNode = child;
                         currentTextVal += child.nodeValue;
@@ -2363,8 +2390,6 @@
                 while (rootEl.firstChild) {
                     const child = rootEl.firstChild;
                     const imported = node.ownerDocument.importNode(child, true);
-                    //TODO: insert before causes elements after the insertion to be marked as modified in the DOM tree, with a blue background.
-                    //Make them not appear as modified.
                     node.insertBefore(imported, node.firstChild);
                     rootEl.removeChild(child); 
                 }
@@ -2401,8 +2426,15 @@
                 const compiledVal = compileTemplate(rule.value);
 
                 const result = pipelineDoc.evaluate(rule.xpath.trim(), pipelineDoc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                
+                // PERFORMANCE FIX: Convert to static matches array first to isolate engine modifications
+                const targets = [];
                 for (let i = 0; i < result.snapshotLength; i++) {
-                    let originalMatchedNode = result.snapshotItem(i);
+                    targets.push(result.snapshotItem(i));
+                }
+
+                for (let i = 0; i < targets.length; i++) {
+                    let originalMatchedNode = targets[i];
                     let node = originalMatchedNode;
                     if (node.nodeType === Node.ATTRIBUTE_NODE) node = node.ownerElement;
                     if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
@@ -2528,8 +2560,14 @@
                             const compiledAttr = compileTemplate(item.attrName);
                             const compiledVal = compileTemplate(item.value);
 
+                            // PERFORMANCE FIX: Convert to static matches array first to isolate engine modifications
+                            const targets = [];
                             for (let i = 0; i < result.snapshotLength; i++) {
-                                let originalMatchedNode = result.snapshotItem(i);
+                                targets.push(result.snapshotItem(i));
+                            }
+
+                            for (let i = 0; i < targets.length; i++) {
+                                let originalMatchedNode = targets[i];
                                 let node = originalMatchedNode;
                                 if (node.nodeType === Node.ATTRIBUTE_NODE) node = node.ownerElement;
                                 if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
@@ -2710,8 +2748,14 @@
                     // Compare child text node segments
                     let childTextOut = "";
                     let childTextIn = "";
-                    Array.from(outNode.childNodes).forEach(c => { if(c.nodeType === Node.TEXT_NODE) childTextOut += c.nodeValue.trim(); });
-                    Array.from(matchedInNode.childNodes).forEach(c => { if(c.nodeType === Node.TEXT_NODE) childTextIn += c.nodeValue.trim(); });
+                    for (let i = 0; i < outNode.childNodes.length; i++) {
+                        let c = outNode.childNodes[i];
+                        if (c.nodeType === Node.TEXT_NODE) childTextOut += c.nodeValue.trim();
+                    }
+                    for (let i = 0; i < matchedInNode.childNodes.length; i++) {
+                        let c = matchedInNode.childNodes[i];
+                        if (c.nodeType === Node.TEXT_NODE) childTextIn += c.nodeValue.trim();
+                    }
 
                     if (hasAttributeDelta || (childTextOut !== childTextIn)) {
                         directMutatedNodes.set(outNode, 'modified');
@@ -2762,6 +2806,7 @@
 
         /**
          * Parses input/output XML, generates internal map references, and triggers UI tree draw loops.
+         * Includes a Large Document Threshold check to defer tree generation for optimal editing performance.
          * @param {string} targetWorkspace - Chosen workspace target ('input' | 'output')
          */
         function parseAndRenderTree(targetWorkspace = 'input') {
@@ -2799,6 +2844,29 @@
                 outputXmlDoc = parsedDoc;
             }
             
+            // PERFORMANCE FIX: Check node count to skip heavy recursive DOM tree building
+            const nodeCount = parsedDoc.querySelectorAll('*').length;
+            const overrideFlag = isInput ? forceRenderInputTree : forceRenderOutputTree;
+            
+            if (nodeCount > 1200 && !overrideFlag) {
+                targetContainer.innerHTML = `
+                    <div class="p-6 bg-gray-800/80 border border-amber-600/30 rounded-xl flex flex-col gap-3 items-start select-none">
+                        <span class="text-xs font-semibold uppercase tracking-wider text-amber-400">⚡ Performance Protection Gate</span>
+                        <p class="text-xs text-gray-300 leading-relaxed">
+                            This XML document is large (${nodeCount} elements). Interactive DOM Tree rendering is deferred to ensure smooth typing and transformations.
+                        </p>
+                        <button onclick="overrideLargeTreeGate('${targetWorkspace}')" class="bg-amber-600 hover:bg-amber-500 text-xs text-white font-semibold py-1.5 px-3 rounded-lg transition duration-150 shadow">
+                            Render Interactive Tree Anyway
+                        </button>
+                    </div>
+                `;
+                if (isInput) {
+                    xpathResultsContainer.innerHTML = '<div class="text-xs text-amber-400 italic">XPath querying matches will still show results below on demand.</div>';
+                    highlightLayerInput.innerHTML = escapeHtml(xmlString);
+                }
+                return;
+            }
+
             targetContainer.innerHTML = '';
             
             const { allTags } = parseHighlights(xmlString, -1);
@@ -2808,11 +2876,20 @@
             }
             
             if (isInput) {
-                highlightActiveScope();
+                scheduleHighlightActiveScope();
                 runXPathQuery();
             } else {
                 runDiffComparisonHighlighter();
             }
+        }
+
+        function overrideLargeTreeGate(targetWorkspace) {
+            if (targetWorkspace === 'input') {
+                forceRenderInputTree = true;
+            } else {
+                forceRenderOutputTree = true;
+            }
+            parseAndRenderTree(targetWorkspace);
         }
 
         /**
@@ -2978,10 +3055,11 @@
             let textContent = "";
             let hasElementChildren = false;
 
-            Array.from(node.childNodes).forEach(child => {
+            for (let i = 0; i < node.childNodes.length; i++) {
+                let child = node.childNodes[i];
                 if (child.nodeType === Node.TEXT_NODE) textContent += child.nodeValue.trim();
                 else if (child.nodeType === Node.ELEMENT_NODE) hasElementChildren = true;
-            });
+            }
 
             if (textContent && !hasElementChildren) {
                 const valSpan = document.createElement('span');
@@ -3019,10 +3097,10 @@
                 const nodePath = workspaceSource === 'input' ? generateAbsoluteXPath(node) : null;
                 let isCollapsed = workspaceSource === 'input' ? collapsedNodePaths.has(nodePath) : false;
 
-                Array.from(node.childNodes).forEach(child => {
-                    const childMarkup = buildTreeNode(child, isStaticPreview, allTags, trackingIndexRef, workspaceSource);
+                for (let i = 0; i < node.childNodes.length; i++) {
+                    const childMarkup = buildTreeNode(node.childNodes[i], isStaticPreview, allTags, trackingIndexRef, workspaceSource);
                     if (childMarkup) childrenContainer.appendChild(childMarkup);
-                });
+                }
 
                 const closeTagLine = document.createElement('div');
                 closeTagLine.className = "text-gray-500 font-bold py-0.5 tree-row select-none transition-all";
@@ -3223,14 +3301,19 @@
                 const compiledAttr = compileTemplate(attrName);
                 const compiledVal = compileTemplate(newVal);
 
+                // PERFORMANCE FIX: Copy targets to a static list first
+                const targets = [];
                 for (let i = 0; i < result.snapshotLength; i++) {
-                    let originalMatchedNode = result.snapshotItem(i);
+                    targets.push(result.snapshotItem(i));
+                }
+
+                for (let i = 0; i < targets.length; i++) {
+                    let originalMatchedNode = targets[i];
                     let node = originalMatchedNode;
                     if (node.nodeType === Node.ATTRIBUTE_NODE) node = node.ownerElement;
                     if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
                     if (node.nodeType !== Node.ELEMENT_NODE) continue;
 
-                    // Execute without a shared active contextual loop scope block mapping. 
                     applyTransformation(node, action, compiledAttr, compiledVal, originalMatchedNode, null, isolatedScopeList);
                 }
                 updateSourceFromDOM(currentXmlDoc);
@@ -3284,7 +3367,8 @@
             let activeTarget = null;
             let activeAttribute = null;
 
-            for (let tag of allTags) {
+            for (let i = 0; i < allTags.length; i++) {
+                let tag = allTags[i];
                 if (cursorPosition >= tag.start && cursorPosition <= tag.tagOpenEnd) {
                     activeTarget = tag;
                     let attrRegex = /([a-zA-Z0-9_:-]+)\s*=\s*(['"])(.*?)\2/g;
@@ -3309,9 +3393,17 @@
             let current = activeTarget;
             while (current) {
                 path.unshift(current);
-                current = allTags.find(t => t.start < current.start && t.end > current.end && !t.isSelfClosing && 
-                    (allTags.filter(parentCandidate => parentCandidate.start < current.start && parentCandidate.end > current.end && parentCandidate.start > t.start).length === 0)
-                );
+                // Simple search replacing recursive loop matching tag elements
+                let nextParent = null;
+                for (let i = 0; i < allTags.length; i++) {
+                    let t = allTags[i];
+                    if (t.start < current.start && t.end > current.end && !t.isSelfClosing) {
+                        if (!nextParent || t.start > nextParent.start) {
+                            nextParent = t;
+                        }
+                    }
+                }
+                current = nextParent;
             }
             return { path, attributeName: activeAttribute, allTags };
         }
@@ -3345,6 +3437,14 @@
             document.querySelectorAll('.highlight-ancestor').forEach(el => el.classList.remove('highlight-ancestor'));
 
             const xmlString = xmlInput.value;
+            
+            // PERFORMANCE FIX: Disable CPU-heavy character highlighting parsing during rapid movements
+            // if document size exceeds 40,000 characters
+            if (xmlString.length > 40000) {
+                highlightLayerInput.textContent = xmlString;
+                return;
+            }
+
             const cursorPosition = xmlInput.selectionStart;
             const { path, attributeName } = parseHighlights(xmlString, cursorPosition);
             updateTextareaHighlight(xmlString, path, 'input');
@@ -3398,14 +3498,17 @@
                 Array.from(node.attributes).forEach(attr => { attrs += ` ${attr.name}="${attr.value}"`; });
                 let hasXmlElements = false;
                 let textVal = "";
-                Array.from(node.childNodes).forEach(c => {
+                for (let i = 0; i < node.childNodes.length; i++) {
+                    let c = node.childNodes[i];
                     if (c.nodeType === Node.ELEMENT_NODE) hasXmlElements = true;
                     if (c.nodeType === Node.TEXT_NODE) textVal += c.nodeValue.trim();
-                });
+                }
                 if (node.childNodes.length === 0) return `${indent}<${node.tagName}${attrs} />\n`;
                 if (!hasXmlElements) return `${indent}<${node.tagName}${attrs}>${textVal}</${node.tagName}>\n`;
                 let output = `${indent}<${node.tagName}${attrs}>\n`;
-                Array.from(node.childNodes).forEach(child => { output += formatNode(child, level + 1); });
+                for (let i = 0; i < node.childNodes.length; i++) {
+                    output += formatNode(node.childNodes[i], level + 1);
+                }
                 output += `${indent}</${node.tagName}>\n`;
                 return output;
             }
@@ -3506,10 +3609,11 @@
 
                 let childText = "";
                 let hasElementChildren = false;
-                Array.from(node.childNodes).forEach(c => {
+                for (let i = 0; i < node.childNodes.length; i++) {
+                    let c = node.childNodes[i];
                     if (c.nodeType === Node.TEXT_NODE) childText += c.nodeValue.trim();
                     if (c.nodeType === Node.ELEMENT_NODE) hasElementChildren = true;
-                });
+                }
 
                 if (!hasElementChildren) {
                     textValueInputGroup.classList.remove('hidden');
