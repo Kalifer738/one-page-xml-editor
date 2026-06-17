@@ -2281,9 +2281,13 @@
                     return;
                 }
                 const rootEl = tempDoc.documentElement;
+                
+                // Fix: Remove the child from rootEl as you process it
                 while (rootEl.firstChild) {
-                    const imported = node.ownerDocument.importNode(rootEl.firstChild, true);
+                    const child = rootEl.firstChild;
+                    const imported = node.ownerDocument.importNode(child, true);
                     node.appendChild(imported);
+                    rootEl.removeChild(child); // Prevents infinite loop
                 }
             }
         }
