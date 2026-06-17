@@ -518,10 +518,216 @@
         let collapsedNodePaths = new Set();
 
         // ==========================================
+        // TOKEN REFACTOR SYSTEM: PARSERS AND EVALUATORS
+        // ==========================================
+        
+        const MODIFIER_SPLIT_RX = /\[(["'])([^"'\n]*?)\1:(-?\d+):(-?\d+)\]$/;
+        const MODIFIER_SLICE_RX = /\[(-?\d+):(-?\d+)\]$/;
+
+        const TOKEN_ATT_RX = /^(?:attribute|att)\[(.*?)\]$/;
+        const TOKEN_COUNTER_RX = /^(?:counter)\[(["'])(.*?)\1\]$/;
+        const TOKEN_VAR_RX = /^(?:var)\[(["'])(.*?)\1\]$/;
+        const TOKEN_CONST_RX = /^(?:const)\[(["'])(.*?)\1\]$/;
+        const TOKEN_REL_RX = /^(child|ancestor)(?:\[(["'])(.*?)\2\])?\[(-?\d+)\](?:\((.*)\))?$/;
+
+        /**
+         * Pre-compiles a template string into an executable AST array.
+         */
+        function compileTemplate(tmpl) {
+            if (!tmpl) return [];
+            
+            const compiled = [];
+            let lastIndex = 0;
+            const tokenRegex = /\{([^}]+)\}/g;
+            let match;
+
+            while ((match = tokenRegex.exec(tmpl)) !== null) {
+                if (match.index > lastIndex) {
+                    compiled.push({ type: 'static', value: tmpl.slice(lastIndex, match.index) });
+                }
+                
+                compiled.push({
+                    type: 'token',
+                    rawExpr: match[1],
+                    compiledToken: compileToken(match[1])
+                });
+                
+                lastIndex = tokenRegex.lastIndex;
+            }
+
+            if (lastIndex < tmpl.length) {
+                compiled.push({ type: 'static', value: tmpl.slice(lastIndex) });
+            }
+
+            return compiled;
+        }
+
+        /**
+         * Parses a single token expression and extracts its structure and modifiers.
+         */
+        function compileToken(expr) {
+            let baseExpr = expr.trim();
+            const modifiers = [];
+
+            while (true) {
+                let splitMatch = baseExpr.match(MODIFIER_SPLIT_RX);
+                if (splitMatch) {
+                    // Start/Take are kept as strings to preserve the logic of negative zeroes (-0)
+                    modifiers.unshift({ type: 'split', sep: splitMatch[2], start: splitMatch[3], take: splitMatch[4] });
+                    baseExpr = baseExpr.slice(0, -splitMatch[0].length).trim();
+                    continue;
+                }
+
+                let sliceMatch = baseExpr.match(MODIFIER_SLICE_RX);
+                if (sliceMatch) {
+                    modifiers.unshift({ type: 'slice', start: sliceMatch[1], take: sliceMatch[2] });
+                    baseExpr = baseExpr.slice(0, -sliceMatch[0].length).trim();
+                    continue;
+                }
+                break;
+            }
+
+            let instruction = { type: 'unrecognized', baseExpr, modifiers };
+
+            if (baseExpr.startsWith("parent(") && baseExpr.endsWith(")")) {
+                instruction.type = 'parent';
+                instruction.inner = compileToken(baseExpr.slice(7, -1).trim());
+            } 
+            else if (TOKEN_ATT_RX.test(baseExpr)) {
+                instruction.type = 'attribute';
+                instruction.key = baseExpr.match(TOKEN_ATT_RX)[1].trim();
+            } 
+            else if (TOKEN_COUNTER_RX.test(baseExpr)) {
+                instruction.type = 'counter';
+                instruction.key = baseExpr.match(TOKEN_COUNTER_RX)[2].trim();
+            } 
+            else if (TOKEN_VAR_RX.test(baseExpr)) {
+                instruction.type = 'var';
+                instruction.key = baseExpr.match(TOKEN_VAR_RX)[2].trim();
+            } 
+            else if (TOKEN_CONST_RX.test(baseExpr)) {
+                instruction.type = 'const';
+                instruction.key = baseExpr.match(TOKEN_CONST_RX)[2].trim();
+            } 
+            else if (baseExpr === "value") {
+                instruction.type = 'value';
+            } 
+            else {
+                let relMatch = baseExpr.match(TOKEN_REL_RX);
+                if (relMatch) {
+                    instruction.type = 'relation';
+                    instruction.relType = relMatch[1];
+                    instruction.key = relMatch[3] || null;
+                    instruction.indexStr = relMatch[4];
+                    instruction.inner = relMatch[5] ? compileToken(relMatch[5].trim()) : null;
+                }
+            }
+
+            return instruction;
+        }
+
+        /**
+         * Evaluates a pre-compiled compiled template array against a specific node context.
+         */
+        function evaluateCompiledTemplate(compiledTmpl, node, originalMatchedNode, context, scopeChain) {
+            let result = "";
+            for (let i = 0; i < compiledTmpl.length; i++) {
+                const chunk = compiledTmpl[i];
+                if (chunk.type === 'static') {
+                    result += chunk.value;
+                } else {
+                    result += executeCompiledToken(chunk.compiledToken, node, originalMatchedNode, context, scopeChain, chunk.rawExpr);
+                }
+            }
+            return result;
+        }
+
+        /**
+         * Executes a pre-compiled token object configuration.
+         */
+        function executeCompiledToken(token, node, originalNode, context, scopeChain, rawExpr) {
+            if (!node && !(token.type === 'var' || token.type === 'const' || token.type === 'counter')) {
+                return "";
+            }
+
+            let val = "";
+            let processed = true;
+
+            switch (token.type) {
+                case 'parent': {
+                    let parentNode = node ? node.parentNode : null;
+                    if (parentNode && parentNode.nodeType === Node.ELEMENT_NODE) {
+                        val = executeCompiledToken(token.inner, parentNode, originalNode, context, scopeChain, rawExpr);
+                    }
+                    break;
+                }
+                case 'attribute':
+                    val = getAttributeValue(node, token.key);
+                    break;
+                case 'counter':
+                    val = getScopedValue(scopeChain, token.key, 'counter');
+                    break;
+                case 'var':
+                    val = getScopedValue(scopeChain, token.key, 'var');
+                    break;
+                case 'const':
+                    val = getScopedValue(scopeChain, token.key, 'const');
+                    break;
+                case 'value':
+                    if (originalNode && originalNode.nodeType === Node.ATTRIBUTE_NODE) {
+                        val = originalNode.nodeValue || "";
+                    }
+                    break;
+                case 'relation': {
+                    let targetEl = token.relType === 'child' 
+                        ? getChildElement(node, token.key, token.indexStr) 
+                        : getAncestorElement(node, token.key, token.indexStr);
+                    
+                    if (!targetEl) {
+                        val = "";
+                    } else if (token.inner) {
+                        val = executeCompiledToken(token.inner, targetEl, originalNode, context, scopeChain, rawExpr);
+                    } else {
+                        val = targetEl.textContent || "";
+                    }
+                    break;
+                }
+                default:
+                    processed = false;
+                    if (context && context.errors) {
+                        let errMsg = `Unrecognized token format: {${token.baseExpr}}`;
+                        if (!context.errors.includes(errMsg)) {
+                            context.errors.push(errMsg);
+                        }
+                    }
+                    break;
+            }
+
+            for (let i = 0; i < token.modifiers.length; i++) {
+                const mod = token.modifiers[i];
+                if (mod.type === 'slice') {
+                    val = applySlicing(val, mod.start, mod.take);
+                } else if (mod.type === 'split') {
+                    val = applySplitting(val, mod.sep, mod.start, mod.take);
+                }
+            }
+
+            if (processed && !val && val !== 0 && val !== "0" && node && node.nodeType === Node.ELEMENT_NODE) {
+                if (context && context.warnings) {
+                    let msg = `Token returned empty: {${rawExpr}} on <${node.tagName}>`;
+                    if (context.warnings.length < 25 && !context.warnings.includes(msg)) {
+                        context.warnings.push(msg);
+                    }
+                }
+            }
+
+            return val || "";
+        }
+
+        // ==========================================
         // 6. GLOBAL / Event Listeners for File Handling, View Switching, and Editor Shortcuts
         // ==========================================
         
-        // Dynamically toggle Mass Edit input fields based on action type
         massEditAction.addEventListener('change', () => {
             const action = massEditAction.value;
             if (action === 'addAttr' || action === 'modifyAttr') {
@@ -535,16 +741,13 @@
                 massEditValue.style.display = 'block';
             }
         });
-        // Initial setup trigger
         massEditAction.dispatchEvent(new Event('change'));
 
-        // Live execution on key entry debouncing setup
         xpathInput.addEventListener('input', () => {
             clearTimeout(xpathDebounceTimer);
             xpathDebounceTimer = setTimeout(runXPathQuery, 300);
         });
 
-        // Sync scroll between textarea and highlight layer
         xmlInput.addEventListener('scroll', () => {
             highlightLayerInput.scrollTop = xmlInput.scrollTop;
             highlightLayerInput.scrollLeft = xmlInput.scrollLeft;
@@ -557,7 +760,6 @@
         xmlInput.addEventListener('keyup', highlightActiveScope);
         xmlInput.addEventListener('click', highlightActiveScope);
 
-        // Handles direct local filesystem uploads
         fileInput.addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -578,9 +780,6 @@
             }
         });
 
-        // Bidirectional Selection Mirroring:
-        // Highlights the corresponding element block in the source code textarea 
-        // whenever a user selects a segment in the DOM visualization tree.
         document.addEventListener('selectionchange', () => {
             const selection = window.getSelection();
             if (!selection.rangeCount || selection.isCollapsed) return;
@@ -603,13 +802,9 @@
             }
         });
 
-        // =========================================================
-        // 6a. MOUSE EVENT DRAG-AND-DROP COORDINATOR EVENT LISTENERS
-        // =========================================================
         document.addEventListener('mousemove', (e) => {
             if (!isDragActive) return;
 
-            // Initialize visual drag elements if drag motion breaks the 5px tolerance boundary
             if (!dragPreview) {
                 const distance = Math.hypot(e.clientX - dragThresholdPosition.x, e.clientY - dragThresholdPosition.y);
                 if (distance > 5) {
@@ -625,18 +820,15 @@
                 }
             }
 
-            // Reposition custom drag preview overlay near cursor
             dragPreview.style.left = `${e.clientX + 15}px`;
             dragPreview.style.top = `${e.clientY + 15}px`;
 
-            // Detect hovered tree row elements underneath dragging coordinates
             const elementOver = document.elementFromPoint(e.clientX, e.clientY);
             if (!elementOver) return;
 
             const rowElement = elementOver.closest('.tree-row');
             if (rowElement && treeContainerInput.contains(rowElement)) {
                 let matchedNode = null;
-                // Identify target node by matching the exact tagLine or closeTagLine references
                 for (let [inNode, inVisual] of nodeMapInput.entries()) {
                     if (inVisual.tagLine === rowElement || inVisual.closeTagLine === rowElement) {
                         matchedNode = inNode;
@@ -644,7 +836,6 @@
                     }
                 }
 
-                // Verify targeted element is valid (not dropping inside self or direct child lines)
                 if (matchedNode && matchedNode !== draggedXmlNode && !draggedXmlNode.contains(matchedNode)) {
                     const rect = rowElement.getBoundingClientRect();
                     const relativeY = e.clientY - rect.top;
@@ -652,7 +843,6 @@
 
                     let action = 'inside';
                     
-                    // Root element cannot have any siblings, so force "inside" drop mode
                     if (matchedNode === currentXmlDoc.documentElement) {
                         action = 'inside';
                     } else if (relativeY < height * 0.3) {
@@ -661,7 +851,6 @@
                         action = 'after';
                     }
 
-                    // Prevent nested "inside" dropping into leaf text elements to avoid creating mixed content
                     let hasDirectText = Array.from(matchedNode.childNodes).some(c => c.nodeType === Node.TEXT_NODE && c.nodeValue.trim().length > 0);
                     
                     if (action === 'inside' && hasDirectText) {
@@ -701,7 +890,6 @@
             if (currentDropTarget && currentDropAction) {
                 saveInputHistorySnapshot();
                 try {
-                    // Prevent dropping root element to be nested inside child branches
                     if (draggedXmlNode === currentXmlDoc.documentElement && currentDropAction === 'inside') {
                         throw new Error("Cannot drop the document root node element inside child elements.");
                     }
@@ -733,11 +921,6 @@
             currentDropAction = null;
         });
 
-        /**
-         * Computes boundaries and triggers drop-indicator bar visuals.
-         * @param {HTMLElement} rowElement - Target Tree DOM Node container.
-         * @param {string} action - Selected positioning target strategy.
-         */
         function showDropIndicator(rowElement, action) {
             if (!dropIndicator) {
                 dropIndicator = document.createElement('div');
@@ -764,9 +947,6 @@
             }
         }
 
-        /**
-         * Extinguishes drop indicator bar and visual highlight helper decorations.
-         */
         function hideDropIndicator() {
             if (dropIndicator) {
                 dropIndicator.style.display = 'none';
@@ -774,22 +954,11 @@
             document.querySelectorAll('.drop-inside-highlight').forEach(el => el.classList.remove('drop-inside-highlight', 'bg-blue-500/20'));
         }
 
-        // ==========================================
-        // 7. GLOBAL CORE LOGIC & FUNCTIONS
-        // ==========================================
-        
-        /**
-         * Pushes current state string into the input history array.
-         * Updates visual enabled/disabled states of the undo controls.
-         */
         function saveInputHistorySnapshot(xmlInputValue = xmlInput.value) {
             inputHistoryStack.push(xmlInputValue);
             updateInputUndoButtonState();
         }
 
-        /**
-         * Reverts input text state to the previous snapshot.
-         */
         function undoInput() {
             if (inputHistoryStack.length > 0) {
                 xmlInput.value = inputHistoryStack.pop();
@@ -800,21 +969,11 @@
             highlightActiveScope();
         }
 
-        /**
-         * Computes and mutates the visual disabled attributes of the input undo trigger button.
-         */
         function updateInputUndoButtonState() {
             undoInputBtn.disabled = (inputHistoryStack.length === 0);
         }
 
-        /**
-         * Switches workspace view panels and sets corresponding navigation tab highlight styles.
-         * Runs visual calculations (like line Diff calculations and pipeline mutations overlays)
-         * depending on active mode targets.
-         * @param {string} targetMode - The selected tab target ('inspector' | 'pipeline' | 'comparison')
-         */
         function switchViewMode(targetMode) {
-            // Reset tab navigation active styling back to default gray states
             tabInspector.className = "px-4 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer text-gray-400 hover:text-gray-200";
             tabPipeline.className = "px-4 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer text-gray-400 hover:text-gray-200";
             tabComparison.className = "px-4 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer text-gray-400 hover:text-gray-200";
@@ -841,9 +1000,6 @@
             }
         }
 
-        /**
-         * Dispatches target action to trigger generic editor rollback (undo logic) on Ctrl+Z events.
-         */
         function triggerGlobalUndo() {
             if (!viewPanelInspector.classList.contains('hidden')) {
                 undoInput();
@@ -865,18 +1021,10 @@
             parseAndRenderTree('output');
         }
 
-        /**
-         * Parses and outputs colored/stylized XML strings using explicit classification loops.
-         * Prevents character overlap visual rendering bugs while injecting custom highlighting classes.
-         * @param {string} text - Raw, unescaped target source XML text block.
-         * @param {Array<Object>} activeElements - Tracked hierarchy path descriptors.
-         * @returns {string} Fully styled HTML text structure.
-         */
         function highlightXmlText(text, activeElements = []) {
             let bgClasses = new Array(text.length).fill('');
             let syntaxClasses = new Array(text.length).fill('');
 
-            // Highlight calculations for currently matched XPath targets
             activeElements.forEach((el, index) => {
                 let isTarget = (index === activeElements.length - 1);
                 if (isTarget) {
@@ -888,35 +1036,31 @@
                 }
             });
 
-            // Parse and classify comment matches using regex
             let match;
             const commentRegex = new RegExp("<!--[\\s\\S]*?-->", "g");
             while ((match = commentRegex.exec(text)) !== null) {
                 for (let i = match.index; i < commentRegex.lastIndex; i++) syntaxClasses[i] = 'text-gray-500 italic';
             }
             
-            // Core regex loop detecting tag matches and assigning granular syntax styles (attributes, values)
             const tagRegex = /<[^>]+>/g;
             while ((match = tagRegex.exec(text)) !== null) {
                 let tagStr = match[0];
                 let tagStart = match.index;
                 
                 if (syntaxClasses[tagStart] === '') {
-                    syntaxClasses[tagStart] = 'text-gray-500 font-bold'; // opening bracket `<`
-                    if (tagStr.startsWith('</')) syntaxClasses[tagStart + 1] = 'text-gray-500 font-bold'; // closing symbol `/`
+                    syntaxClasses[tagStart] = 'text-gray-500 font-bold'; 
+                    if (tagStr.startsWith('</')) syntaxClasses[tagStart + 1] = 'text-gray-500 font-bold'; 
                     
                     let endBracketIndex = tagStart + tagStr.length - 1;
-                    syntaxClasses[endBracketIndex] = 'text-gray-500 font-bold'; // closing bracket `>`
-                    if (tagStr.endsWith('/>')) syntaxClasses[endBracketIndex - 1] = 'text-gray-500 font-bold'; // self-closing `/`
+                    syntaxClasses[endBracketIndex] = 'text-gray-500 font-bold'; 
+                    if (tagStr.endsWith('/>')) syntaxClasses[endBracketIndex - 1] = 'text-gray-500 font-bold'; 
                     
-                    // Style tag names with a distinct color (blue)
                     let nameMatch = tagStr.match(/^<\/?([a-zA-Z0-9_:-]+)/);
                     if (nameMatch) {
                         let nameStart = tagStart + (tagStr.startsWith('</') ? 2 : 1);
                         for(let i = 0; i < nameMatch[1].length; i++) syntaxClasses[nameStart + i] = 'text-blue-400 font-medium';
                     }
                     
-                    // Isolate key-value structures representing attributes
                     let attrRegex = /([a-zA-Z0-9_:-]+)\s*=\s*(['"])(.*?)\2/g;
                     let attrMatch;
                     while ((attrMatch = attrRegex.exec(tagStr)) !== null) {
@@ -926,16 +1070,15 @@
                         
                         let attrStart = tagStart + attrMatch.index;
                         for(let i = 0; i < attrName.length; i++) syntaxClasses[attrStart + i] = 'text-amber-400';
-                        syntaxClasses[attrStart + attrName.length] = 'text-gray-500'; // character `=`
+                        syntaxClasses[attrStart + attrName.length] = 'text-gray-500'; 
                         
-                        let valStart = attrStart + attrName.length + 1; // start index of quote
+                        let valStart = attrStart + attrName.length + 1; 
                         let valLen = quote.length + attrVal.length + quote.length;
                         for(let i = 0; i < valLen; i++) syntaxClasses[valStart + i] = 'text-emerald-400';
                     }
                 }
             }
 
-            // Construct output markup containing correct DOM boundaries
             let resultHtml = "";
             let currentCombined = null;
             
@@ -959,24 +1102,14 @@
             return resultHtml;
         }
 
-        /**
-         * Dynamic Programming Edit Distance Algorithm (Levenshtein Alignment-based variation).
-         * Calculates line differences by aligning line sets of original vs. modified documents.
-         * Generates an array detailing line modifications (added, removed, modified, unchanged).
-         * @param {Array<string>} originalLines - Source file line string components.
-         * @param {Array<string>} modifiedLines - Transformed file line string components.
-         * @returns {Array<Object>} Linear trace instructions for generating structural side-by-side view.
-         */
         function computeLineDiff(originalLines, modifiedLines) {
             const n = originalLines.length;
             const m = modifiedLines.length;
             const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
             
-            // DP table initialization
             for (let i = 0; i <= n; i++) dp[i][0] = i;
             for (let j = 0; j <= m; j++) dp[0][j] = j;
             
-            // Populating edit costs matrix
             for (let i = 1; i <= n; i++) {
                 for (let j = 1; j <= m; j++) {
                     if (originalLines[i - 1].trim() === modifiedLines[j - 1].trim()) {
@@ -987,7 +1120,6 @@
                 }
             }
             
-            // Backtracking to resolve optimal path
             let i = n, j = m;
             let aligned = [];
             
@@ -1004,7 +1136,6 @@
                 }
             }
 
-            // Post-process sequence tracking elements to group removed + added pairs as 'modified'
             let finalAligned = [];
             for (let k = 0; k < aligned.length; k++) {
                 if (aligned[k].type === 'removed' && k + 1 < aligned.length && aligned[k + 1].type === 'added') {
@@ -1017,9 +1148,6 @@
             return finalAligned;
         }
 
-        /**
-         * Resolves current line-by-line differences and draws them in dual alignment comparison columns.
-         */
         function renderComparisonDiff() {
             const originalText = xmlInput.value;
             const modifiedText = xmlOutput.value;
@@ -1065,9 +1193,6 @@
             comparisonModifiedContainer.innerHTML = modHtml;
         }
 
-        /**
-         * Serializes the modified XML output buffer and copies the plain string to systemic clipboard.
-         */
         function copyOutputToClipboard() {
             const xmlText = xmlOutput.value || xmlInput.value;
             if (!xmlText.trim()) {
@@ -1089,12 +1214,6 @@
             document.body.removeChild(tempTextArea);
         }
 
-        /**
-         * Jumps the textarea scroll offset and selection ranges to target character positions.
-         * Used for focusing elements on editor double clicks.
-         * @param {number} sourceStart - Starting character index of target element block.
-         * @param {number} sourceEnd - Ending character index of target element block.
-         */
         function selectCodeMirrorRegion(sourceStart, sourceEnd) {
             if (sourceStart !== undefined && sourceEnd !== undefined) {
                 xmlInput.focus();
@@ -1111,16 +1230,10 @@
             }
         }
 
-        /**
-         * Evaluates modifier key combinations and routes to undo or duplication logic blocks.
-         * Upgraded with Auto-close tags, Smart Enter, Comment toggling, and Line shifting.
-         * @param {KeyboardEvent} e - Keydown event descriptor.
-         */
         function handleEditorShortcuts(e) {
             const isCtrl = e.ctrlKey || e.metaKey;
             const isAlt = e.altKey;
 
-            // Smart Enter (Auto-Indent)
             if (e.key === 'Enter') {
                 const val = xmlInput.value;
                 const start = xmlInput.selectionStart;
@@ -1132,7 +1245,6 @@
                 const indentMatch = currentLine.match(/^\s*/);
                 const indent = indentMatch ? indentMatch[0] : '';
 
-                // Check if cursor is directly between opening and closing tags (e.g., > <)
                 if (textBefore.match(/<[^/][^>]*>$/) && textAfter.match(/^<\//)) {
                     e.preventDefault();
                     saveInputHistorySnapshot();
@@ -1142,7 +1254,6 @@
                     parseAndRenderTree('input');
                     return;
                 } else {
-                    // Standard inherit-indentation
                     e.preventDefault();
                     saveInputHistorySnapshot();
                     document.execCommand('insertText', false, '\n' + indent);
@@ -1151,20 +1262,18 @@
                 }
             }
 
-            // Auto-Close Tags
             if (e.key === '>') {
                 const val = xmlInput.value;
                 const start = xmlInput.selectionStart;
                 const textBefore = val.substring(0, start);
                 
-                // Check if typing '>' concludes a new opening tag
                 const match = textBefore.match(/<([a-zA-Z0-9_:-]+)(?:\s+[^>]*)?$/);
                 if (match && !textBefore.endsWith('/')) {
                     e.preventDefault();
                     saveInputHistorySnapshot();
                     const tagName = match[1];
                     document.execCommand('insertText', false, `></${tagName}>`);
-                    xmlInput.setSelectionRange(start + 1, start + 1); // Move cursor inside
+                    xmlInput.setSelectionRange(start + 1, start + 1); 
                     parseAndRenderTree('input');
                     return;
                 }
@@ -1172,12 +1281,11 @@
 
             if (e.key === 'Tab') {
                 e.preventDefault();
-                document.execCommand('insertText', false, "   "); // Matches your 3-space format
+                document.execCommand('insertText', false, "   "); 
                 parseAndRenderTree('input');
                 return;
             }
 
-            // Ctrl + D: Duplicate text
             if (isCtrl && !isAlt && e.key.toLowerCase() === 'd') {
                 e.preventDefault();
                 saveInputHistorySnapshot();
@@ -1185,7 +1293,6 @@
                 return;
             }
 
-            // Ctrl + /: Toggle Comment
             if (isCtrl && e.key === '/') {
                 e.preventDefault();
                 saveInputHistorySnapshot();
@@ -1193,7 +1300,6 @@
                 return;
             }
 
-            // Alt + Up / Alt + Down: Move lines
             if (isAlt && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
                 e.preventDefault();
                 saveInputHistorySnapshot();
@@ -1202,10 +1308,6 @@
             }
         }
 
-        /**
-         * Shifts the currently selected line(s) up or down.
-         * @param {boolean} isUp - Direction indicator.
-         */
         function moveLines(isUp) {
             const start = xmlInput.selectionStart;
             const end = xmlInput.selectionEnd;
@@ -1242,9 +1344,6 @@
             highlightActiveScope();
         }
 
-        /**
-         * Toggles standard XML comment blocks <!-- --> over the active selection or current line.
-         */
         function toggleComment() {
             let start = xmlInput.selectionStart;
             let end = xmlInput.selectionEnd;
@@ -1259,13 +1358,11 @@
             const selectedText = val.substring(start, end);
             
             if (selectedText.trim().startsWith('<!--') && selectedText.trim().endsWith('-->')) {
-                // Uncomment
                 const newText = selectedText.replace(/^\s*<!--\s*/, '').replace(/\s*-->\s*$/, '');
                 xmlInput.setSelectionRange(start, end);
                 document.execCommand('insertText', false, newText);
                 xmlInput.setSelectionRange(start, start + newText.length);
             } else {
-                // Comment
                 const newText = `<!-- ${selectedText} -->`;
                 xmlInput.setSelectionRange(start, end);
                 document.execCommand('insertText', false, newText);
@@ -1274,9 +1371,6 @@
             parseAndRenderTree('input');
         }
 
-        /**
-         * Duplicates targeted characters or complete current text lines.
-         */
         function duplicateText(isDirectional, isUp) {
             const val = xmlInput.value;
             const start = xmlInput.selectionStart;
@@ -1298,15 +1392,11 @@
             parseAndRenderTree('input');
         }
 
-        /**
-         * Synchronizes local pipeline state with persistent localStorage configurations.
-         */        
         function loadSavedRulesPipeline() {
             try {
                 const stored = localStorage.getItem('xml_automation_pipeline_rules_v2');
                 rulesList = stored ? JSON.parse(stored) : [];
                 
-                // Deep normalization to handle new structural additions
                 const normalize = (arr) => {
                     arr.forEach(r => {
                         if (r.enabled === undefined) r.enabled = true;
@@ -1337,11 +1427,7 @@
             renderRulesPipelineUi();
         }
 
-        /**
-         * Commits current active mutation rules list array directly into localStorage.
-         */
         function saveRulesPipelineToStorage() {
-            // Strip out temporary errors/warnings before storing
             const safeList = JSON.parse(JSON.stringify(rulesList));
             const traverse = (arr) => {
                 arr.forEach(a => {
@@ -1356,10 +1442,6 @@
             traverse(safeList);
             localStorage.setItem('xml_automation_pipeline_rules_v2', JSON.stringify(safeList));
         }
-
-        // ==========================================
-        // FEATURE: Prepend New Pipeline Items
-        // ==========================================
 
         function addNewRuleRow(groupId = null) {
             const newRule = {
@@ -1383,7 +1465,7 @@
             const newCounter = {
                 id: Date.now() + Math.random().toString(36).substring(2, 7),
                 type: 'counter',
-                name: '', // Display Description
+                name: '', 
                 enabled: true, conditionMode: 'none', conditionExpr: '',
                 varName: 'my_counter', value: '1', increment: '1',
                 errors: [], warnings: []
@@ -1400,7 +1482,7 @@
             const newVar = {
                 id: Date.now() + Math.random().toString(36).substring(2, 7),
                 type: 'variable',
-                name: '', // Display Description
+                name: '', 
                 enabled: true, conditionMode: 'none', conditionExpr: '',
                 varName: 'my_var', value: '',
                 errors: [], warnings: []
@@ -1417,7 +1499,7 @@
             const newConst = {
                 id: Date.now() + Math.random().toString(36).substring(2, 7),
                 type: 'constant',
-                name: '', // Display Description
+                name: '', 
                 enabled: true, conditionMode: 'none', conditionExpr: '',
                 varName: 'MY_CONST', value: '',
                 errors: [], warnings: []
@@ -1491,7 +1573,6 @@
             renderRulesPipelineUi();
         }
 
-        // Feature: Horizontal array manipulation allowing items to move to nested groups or parents
         function shiftRuleDepth(id, direction) {
             const found = findRuleDeep(id);
             if (!found) return;
@@ -1500,7 +1581,7 @@
                 if (found.index > 0 && found.array[found.index - 1].type === 'group') {
                     const targetGroup = found.array[found.index - 1];
                     const item = found.array.splice(found.index, 1)[0];
-                    targetGroup.rules.unshift(item); // Unshift directly to top of nested group
+                    targetGroup.rules.unshift(item); 
                     saveRulesPipelineToStorage();
                     renderRulesPipelineUi();
                 }
@@ -1514,9 +1595,6 @@
             }
         }
 
-        // ==========================================
-        // FEATURE: Collapsing Groups Handler
-        // ==========================================
         function toggleGroupCollapse(id) {
             const found = findRuleDeep(id);
             if (found && found.item.type === 'group') {
@@ -1526,21 +1604,16 @@
             }
         }
 
-        // =========================================================
-        // FEATURE: Rules Pipeline Interactive Drag and Drop Handlers
-        // =========================================================
         function onDragStart(e, id) {
-            // Prevent dragging if focus originates on input or interactive elements inside card
             if (['INPUT', 'SELECT', 'OPTION', 'BUTTON', 'TEXTAREA'].includes(e.target.tagName)) {
                 e.preventDefault();
                 return;
             }
-            e.stopPropagation(); // Block parent groups from intercepting drags initiated on child rules
+            e.stopPropagation(); 
             e.dataTransfer.setData("text/plain", id);
             e.dataTransfer.effectAllowed = "move";
             draggedPipelineItemId = id;
             
-            // Apply slight transparent visual state to active dragged row card
             setTimeout(() => {
                 const row = document.getElementById(`pipeline-item-${id}`);
                 if (row) row.classList.add('opacity-45');
@@ -1549,7 +1622,7 @@
 
         function onPipelineItemDragOver(e, targetId) {
             e.preventDefault();
-            e.stopPropagation(); // Prevents parent groups from responding when dragging over child elements
+            e.stopPropagation(); 
             
             if (draggedPipelineItemId === targetId) {
                 hidePipelineDropIndicator();
@@ -1560,7 +1633,6 @@
             const targetInfo = findRuleDeep(targetId);
             if (!draggedInfo || !targetInfo) return;
             
-            // Prevent dropping parent groups inside their own child nodes
             if (draggedInfo.item.type === 'group' && draggedInfo.item.rules) {
                 const isChild = (parent, childId) => {
                     return parent.rules.some(r => r.id === childId || (r.type === 'group' && isChild(r, childId)));
@@ -1580,7 +1652,6 @@
             
             let action = 'before';
             if (targetInfo.item.type === 'group') {
-                // Determine if we are dragging near boundaries or aiming to drop inside nested scopes
                 if (relativeY < height * 0.25) {
                     action = 'before';
                 } else if (relativeY > height * 0.75) {
@@ -1607,14 +1678,12 @@
             
             const rect = targetRow.getBoundingClientRect();
             
-            // Clean visual transition styles across all rules
             document.querySelectorAll('.pipeline-drag-enter').forEach(el => {
                 el.classList.remove('pipeline-drag-enter', 'border-indigo-400', 'bg-indigo-900/10');
             });
             
             if (action === 'inside-top' || action === 'inside-bottom') {
                 pipelineDropIndicator.style.display = 'none';
-                // Active feedback: Highlight the parent card indicating active scope boundary entrance
                 targetRow.classList.add('pipeline-drag-enter', 'border-indigo-400', 'bg-indigo-900/10');
             } else {
                 pipelineDropIndicator.style.display = 'block';
@@ -1650,27 +1719,20 @@
             
             if (!draggedInfo || !targetInfo) return;
             
-            // Check if items share the same parent context array
             const sameArray = draggedInfo.array === targetInfo.array;
-            
-            // Pluck target item out of origin array positions
             const pluckedItem = draggedInfo.array.splice(draggedInfo.index, 1)[0];
             
-            // Compensate target index if dragging down the same array (prevents offset mismatch bug)
             let adjustedTargetIndex = targetInfo.index;
             if (sameArray && draggedInfo.index < targetInfo.index) {
                 adjustedTargetIndex--;
             }
             
-            // Save state snapshot for programmatic restoration
             saveInputHistorySnapshot(xmlInput.value); 
             
             try {
                 if (activeDropAction === 'inside-top') {
-                    // Moving a block into a different scope from the top unshifts it to the top
                     targetInfo.item.rules.unshift(pluckedItem);
                 } else if (activeDropAction === 'inside-bottom') {
-                    // Moving a block into a different scope from the bottom appends it to the bottom
                     targetInfo.item.rules.push(pluckedItem);
                 } else if (activeDropAction === 'before') {
                     targetInfo.array.splice(adjustedTargetIndex, 0, pluckedItem);
@@ -1749,10 +1811,10 @@
             
             const emptyScopeChain = [{ vars: new Map(), consts: new Map(), counters: new Map() }];
             
-            if (item.attrName) evaluateTemplate(mockNode, item.attrName, null, tempContext, emptyScopeChain);
-            if (item.value) evaluateTemplate(mockNode, item.value, null, tempContext, emptyScopeChain);
-            if (item.conditionExpr) evaluateTemplate(mockNode, item.conditionExpr, null, tempContext, emptyScopeChain);
-            if (item.type === 'counter' && item.increment) evaluateTemplate(mockNode, item.increment, null, tempContext, emptyScopeChain);
+            if (item.attrName) evaluateCompiledTemplate(compileTemplate(item.attrName), mockNode, null, tempContext, emptyScopeChain);
+            if (item.value) evaluateCompiledTemplate(compileTemplate(item.value), mockNode, null, tempContext, emptyScopeChain);
+            if (item.conditionExpr) evaluateCompiledTemplate(compileTemplate(item.conditionExpr), mockNode, null, tempContext, emptyScopeChain);
+            if (item.type === 'counter' && item.increment) evaluateCompiledTemplate(compileTemplate(item.increment), mockNode, null, tempContext, emptyScopeChain);
             
             item.errors = tempContext.errors;
             item.warnings = tempContext.warnings || [];
@@ -1770,7 +1832,6 @@
             const renderItem = (item, parentArray, container, isNested, parentGroup) => {
                 const idx = parentArray.indexOf(item);
                 
-                // FEATURE: IF/ELSE Condition Binding & UI Locks
                 const isElse = item.conditionMode === 'else';
                 const prevItem = idx > 0 ? parentArray[idx-1] : null;
                 const isPrevIf = prevItem && prevItem.conditionMode === 'if';
@@ -1801,7 +1862,6 @@
                     <input type="text" id="input-condexpr-${item.id}" value="${escapeHtml(item.conditionExpr || '')}" placeholder="IF Condition evaluates to true if non-empty (e.g. {var['x']} or {child[0]})" oninput="syncRuleFieldData('${item.id}', 'conditionExpr', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-blue-900/50 rounded px-2.5 py-1.5 text-xs text-blue-300 w-full mb-2 font-mono">
                 ` : '';
 
-                // Premium visual drag handlebar icon
                 const dragHandle = `
                     <span draggable="true" 
                         ondragstart="onDragStart(event, '${item.id}')" 
@@ -1809,7 +1869,6 @@
                         title="Drag to reorder">⠿</span>
                 `;
 
-                // Group Node Render Logic
                 if (item.type === 'group') {
                     const isCollapsed = item.collapsed || false;
                     const toggleCollapseBtn = `
@@ -1821,8 +1880,6 @@
                     const row = document.createElement('div');
                     row.className = `flex flex-col bg-gray-850 border border-indigo-700/50 rounded-lg p-2 gap-2 transition-all ${opacityClass}`;
                     row.setAttribute('id', `pipeline-item-${item.id}`);
-                    // row.setAttribute('draggable', 'true');
-                    // row.addEventListener('dragstart', (e) => onDragStart(e, item.id));
                     row.addEventListener('dragover', (e) => onPipelineItemDragOver(e, item.id));
                     row.addEventListener('dragleave', hidePipelineDropIndicator);
                     row.addEventListener('drop', (e) => onPipelineItemDrop(e, item.id));
@@ -1866,8 +1923,6 @@
                     const row = document.createElement('div');
                     row.className = `flex flex-col bg-gray-900 border ${isNested ? 'border-gray-800' : 'border-gray-700/80'} rounded-lg p-3 gap-2 transition-all ${opacityClass}`;
                     row.setAttribute('id', `pipeline-item-${item.id}`);
-                    // row.setAttribute('draggable', 'true');
-                    // row.addEventListener('dragstart', (e) => onDragStart(e, item.id));
                     row.addEventListener('dragover', (e) => onPipelineItemDragOver(e, item.id));
                     row.addEventListener('dragleave', hidePipelineDropIndicator);
                     row.addEventListener('drop', (e) => onPipelineItemDrop(e, item.id));
@@ -1971,13 +2026,6 @@
             rulesList.forEach(item => renderItem(item, rulesList, rulesContainer, false, null));
         }
 
-        // ==========================================
-        // TOKEN REFACTOR SYSTEM: PARSERS AND EVALUATORS
-        // ==========================================
-
-        /**
-         * Resolves targeted attributes dynamically via Number indexing or Key strings.
-         */
         function getAttributeValue(node, inner) {
             if (!node || node.nodeType !== Node.ELEMENT_NODE) return "";
             let isNum = /^-?\d+$/.test(inner);
@@ -1997,9 +2045,6 @@
             return "";
         }
 
-        /**
-         * Resolves text contents of specific targeted direct elements/children.
-         */
         function getChildElement(node, key, indexStr) {
             if (!node || node.nodeType !== Node.ELEMENT_NODE) return null;
             let elementChildren = Array.from(node.children);
@@ -2040,9 +2085,6 @@
             return null;
         }
 
-        /**
-         * Standardizes slicing using python-like directional starts.
-         */
         function applySlicing(str, startStr, takeStr) {
             if (!str) return "";
             let take = parseInt(takeStr);
@@ -2058,9 +2100,6 @@
             }
         }
 
-        /**
-         * Standardizes array chunking behaviors via delimiters mappings.
-         */
         function applySplitting(str, sep, startStr, takeStr) {
             if (!str) return "";
             let take = parseInt(takeStr);
@@ -2077,14 +2116,9 @@
             }
         }
 
-        /**
-         * Retrieve variable, constant, or counter strictly from hierarchical scope mappings.
-         */
         function getScopedValue(scopeChain, name, type) {
-            // Null scope signifies dry run context processing. We suppress runtime failures while actively typing.
             if (!scopeChain) return ""; 
 
-            // Search backward up the scope stacks tracking active variable & constant blocks.
             for (let i = scopeChain.length - 1; i >= 0; i--) {
                 const scope = scopeChain[i];
                 if (type === 'var' && scope.vars.has(name)) return scope.vars.get(name);
@@ -2092,140 +2126,13 @@
                 if (type === 'counter' && scope.counters.has(name)) {
                     let counterObj = scope.counters.get(name);
                     let currentVal = counterObj.current;
-                    // Increment for the NEXT time it is referenced
                     counterObj.current += counterObj.step;
                     return currentVal.toString();
                 }
             }
-            // Block execution completely per requirement if access is unauthorized/undeclared
             throw new Error(`Undeclared ${type === 'var' ? 'variable' : (type === 'const' ? 'constant' : 'counter')}: '${name}' cannot be accessed.`);
         }
 
-        /**
-         * Recursively computes functional tokens nested inside curly braces {}
-         */
-        function parseAndEvaluateToken(expr, node, originalNode, context, scopeChain) {
-            if (!expr || (!node && !expr.match(/^(?:var|const|counter)\[/))) return "";
-            let modifiers = [];
-            let baseExpr = expr.trim();
-            
-            // Extract trailing modifiers dynamically mapping array splits/slices
-            while(true) {
-                let splitMatch = baseExpr.match(/\[(["'])([^"'\n]*?)\1:(-?\d+):(-?\d+)\]$/);
-                if (splitMatch) {
-                    modifiers.unshift({ type: 'split', sep: splitMatch[2], start: splitMatch[3], take: splitMatch[4] });
-                    baseExpr = baseExpr.slice(0, -splitMatch[0].length).trim();
-                    continue;
-                }
-                
-                let sliceMatch = baseExpr.match(/\[(-?\d+):(-?\d+)\]$/);
-                if (sliceMatch) {
-                    modifiers.unshift({ type: 'slice', start: sliceMatch[1], take: sliceMatch[2] });
-                    baseExpr = baseExpr.slice(0, -sliceMatch[0].length).trim();
-                    continue;
-                }
-                break;
-            }
-            
-            let val = "";
-            let processed = false;
-            
-            if (baseExpr.startsWith("parent(") && baseExpr.endsWith(")")) {
-                let inner = baseExpr.slice(7, -1).trim();
-                let parentNode = node ? node.parentNode : null;
-                if (parentNode && parentNode.nodeType === Node.ELEMENT_NODE) {
-                    val = parseAndEvaluateToken(inner, parentNode, originalNode, context, scopeChain);
-                }
-                processed = true;
-            }
-            else if (baseExpr.match(/^(?:attribute|att)\[(.*?)\]$/)) {
-                let inner = baseExpr.match(/^(?:attribute|att)\[(.*?)\]$/)[1].trim();
-                val = getAttributeValue(node, inner);
-                processed = true;
-            }
-            else if (baseExpr.match(/^(?:counter)\[(["'])(.*?)\1\]$/)) {
-                let inner = baseExpr.match(/^(?:counter)\[(["'])(.*?)\1\]$/)[2].trim();
-                val = getScopedValue(scopeChain, inner, 'counter');
-                processed = true;
-            }
-            else if (baseExpr.match(/^(?:var)\[(["'])(.*?)\1\]$/)) {
-                let inner = baseExpr.match(/^(?:var)\[(["'])(.*?)\1\]$/)[2].trim();
-                val = getScopedValue(scopeChain, inner, 'var');
-                processed = true;
-            }
-            else if (baseExpr.match(/^(?:const)\[(["'])(.*?)\1\]$/)) {
-                let inner = baseExpr.match(/^(?:const)\[(["'])(.*?)\1\]$/)[2].trim();
-                val = getScopedValue(scopeChain, inner, 'const');
-                processed = true;
-            }
-            else if (baseExpr === "value") {
-                if (originalNode && originalNode.nodeType === Node.ATTRIBUTE_NODE) {
-                    val = originalNode.nodeValue || "";
-                }
-                processed = true;
-            } else {
-                let relMatch = baseExpr.match(/^(child|ancestor)(?:\[(["'])(.*?)\2\])?\[(-?\d+)\](?:\((.*)\))?$/);
-                if (relMatch) {
-                    let type = relMatch[1];
-                    let key = relMatch[3] || null;
-                    let indexStr = relMatch[4];
-                    let inner = relMatch[5] ? relMatch[5].trim() : null;
-
-                    let targetEl = type === 'child' ? getChildElement(node, key, indexStr) : getAncestorElement(node, key, indexStr);
-                    
-                    if (!targetEl) {
-                        val = "";
-                    } else if (inner) {
-                        val = parseAndEvaluateToken(inner, targetEl, originalNode, context, scopeChain);
-                    } else {
-                        val = targetEl.textContent || "";
-                    }
-                    processed = true;
-                }
-            }
-
-            if (!processed) {
-                if (context && context.errors) {
-                    let errMsg = `Unrecognized token format: {${baseExpr}}`;
-                    if (!context.errors.includes(errMsg)) {
-                        context.errors.push(errMsg);
-                    }
-                }
-            }
-
-            for (let mod of modifiers) {
-                if (mod.type === 'slice') {
-                    val = applySlicing(val, mod.start, mod.take);
-                } else if (mod.type === 'split') {
-                    val = applySplitting(val, mod.sep, mod.start, mod.take);
-                }
-            }
-            
-            if (processed && !val && val !== 0 && val !== "0" && node && node.nodeType === Node.ELEMENT_NODE) {
-                if (context && context.warnings) {
-                    let msg = `Token returned empty: {${expr}} on <${node.tagName}>`;
-                    if (context.warnings.length < 25 && !context.warnings.includes(msg)) {
-                        context.warnings.push(msg);
-                    }
-                }
-            }
-            
-            return val || "";
-        }
-
-        /**
-         * Resolves text chunks via mapping against the primary interpolating bracket braces '{ }'
-         */
-        const evaluateTemplate = (node, tmpl, originalMatchedNode, context, scopeChain) => {
-            if (!tmpl) return "";
-            return tmpl.replace(/\{([^}]+)\}/g, (match, expr) => {
-                return parseAndEvaluateToken(expr, node, originalMatchedNode, context, scopeChain);
-            });
-        };
-
-        /**
-         * Evaluates dynamic values explicitly as strings into boolean conditionals 
-         */
         function evaluateTruthiness(val) {
             if (val === null || val === undefined) return false;
             const s = val.toString().trim().toLowerCase();
@@ -2233,25 +2140,21 @@
             return true;
         }
 
-        /**
-         * Mutates a specified DOM node based on action requests using stateful counters & tokens.
-         * Resolves dynamic text slices, attribute name resolution, and XML child additions.
-         */
-        function applyTransformation(node, action, attrNameTemplate, valueTemplate, originalMatchedNode, ruleContext, scopeChain) {
+        function applyTransformation(node, action, compiledAttrNameTemplate, compiledValueTemplate, originalMatchedNode, ruleContext, scopeChain) {
             if (!node) return;
 
-            const evaluate = (tmpl) => {
-                return tmpl ? evaluateTemplate(node, tmpl, originalMatchedNode, ruleContext, scopeChain) : "";
+            const evaluate = (compiledTmpl) => {
+                return compiledTmpl ? evaluateCompiledTemplate(compiledTmpl, node, originalMatchedNode, ruleContext, scopeChain) : "";
             };
 
             if (action === 'addAttr' || action === 'modifyAttr') {
-                const attrName = evaluate(attrNameTemplate);
-                const attrVal = evaluate(valueTemplate);
+                const attrName = evaluate(compiledAttrNameTemplate);
+                const attrVal = evaluate(compiledValueTemplate);
                 if (attrName) {
                     node.setAttribute(attrName, attrVal);
                 }
             } else if (action === 'removeAttr') {
-                const attrName = evaluate(attrNameTemplate);
+                const attrName = evaluate(compiledAttrNameTemplate);
                 if (attrName) {
                     node.removeAttribute(attrName);
                 }
@@ -2264,14 +2167,14 @@
                         currentTextVal += child.nodeValue;
                     }
                 }
-                const finalVal = evaluate(valueTemplate);
+                const finalVal = evaluate(compiledValueTemplate);
                 if (textNode) {
                     textNode.nodeValue = finalVal;
                 } else {
                     node.textContent = finalVal;
                 }
             } else if (action === 'addNode') {
-                const rawXml = evaluate(valueTemplate);
+                const rawXml = evaluate(compiledValueTemplate);
                 const parser = new DOMParser();
                 const tempDoc = parser.parseFromString("<root>" + rawXml + "</root>", "application/xml");
                 if (tempDoc.getElementsByTagName("parsererror")[0]) {
@@ -2285,17 +2188,12 @@
                 while (rootEl.firstChild) {
                     const child = rootEl.firstChild;
                     const imported = node.ownerDocument.importNode(child, true);
-                    node.insertBefore(imported, node.firstChild);
-                    rootEl.removeChild(child);
+                    node.appendChild(imported);
+                    rootEl.removeChild(child); 
                 }
             }
         }
 
-        /**
-         * Compiles and evaluates a single pipeline rule against the input document.
-         * Outputs result directly to view 2 XML preview buffers.
-         * @param {string} id - Selected rule identifier token.
-         */
         function executeSingleRule(id) {
             const found = findRuleDeep(id);
             if (!found || found.item.type !== 'rule') return;
@@ -2314,8 +2212,10 @@
                 rule.errors = [];
                 rule.warnings = [];
                 
-                // Empty execution scope list because isolated rules ignore surrounding context layers.
                 const isolatedScopeList = [{ vars: new Map(), consts: new Map(), counters: new Map() }];
+
+                const compiledAttr = compileTemplate(rule.attrName);
+                const compiledVal = compileTemplate(rule.value);
 
                 const result = pipelineDoc.evaluate(rule.xpath.trim(), pipelineDoc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
                 for (let i = 0; i < result.snapshotLength; i++) {
@@ -2325,7 +2225,7 @@
                     if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
                     if (node.nodeType !== Node.ELEMENT_NODE) continue;
 
-                    applyTransformation(node, rule.action, rule.attrName, rule.value, originalMatchedNode, rule, isolatedScopeList);
+                    applyTransformation(node, rule.action, compiledAttr, compiledVal, originalMatchedNode, rule, isolatedScopeList);
                 }
                 const serializer = new XMLSerializer();
                 xmlOutput.value = serializer.serializeToString(pipelineDoc);
@@ -2350,11 +2250,10 @@
 
             let processingSucceeded = true;
 
-            // Process list sequences resolving nested block operations while pushing/popping active rule scope trees
             const processRuleList = (list, scopeChain) => {
                 const currentScope = { vars: new Map(), consts: new Map(), counters: new Map() };
                 const newScopeChain = [...scopeChain, currentScope];
-                let lastIfResult = null; // Track execution status matching sibling IF statements
+                let lastIfResult = null; 
 
                 for (let idx = 0; idx < list.length; idx++) {
                     if (!processingSucceeded) break;
@@ -2363,26 +2262,25 @@
                     item.errors = [];
                     item.warnings = [];
 
-                    // Evaluate Logical Blocks / IF / ELSE Conditional Skip checks
                     if (item.conditionMode === 'else') {
                         const prevItem = idx > 0 ? list[idx-1] : null;
                         if (!prevItem || prevItem.conditionMode !== 'if') {
                             item.errors.push("ELSE block is not directly preceded by an IF block. Skipped.");
                             continue;
                         }
-                        if (!prevItem.enabled) continue; // IF is disabled; ELSE defaults to disabled
-                        if (lastIfResult === true) continue; // IF condition passed successfully, skipped ELSE path
-                        if (lastIfResult === null) continue; // IF broke due to runtime error, do not launch
+                        if (!prevItem.enabled) continue; 
+                        if (lastIfResult === true) continue; 
+                        if (lastIfResult === null) continue; 
                     } else if (item.conditionMode === 'if') {
                         if (!item.enabled) {
                             lastIfResult = null;
                             continue;
                         }
                         const mockNode = pipelineDoc.documentElement;
-                        const condVal = evaluateTemplate(mockNode, item.conditionExpr || "", null, {errors:[], warnings:[]}, newScopeChain);
+                        const condVal = evaluateCompiledTemplate(compileTemplate(item.conditionExpr || ""), mockNode, null, {errors:[], warnings:[]}, newScopeChain);
                         lastIfResult = evaluateTruthiness(condVal);
                         
-                        if (!lastIfResult) continue; // Condition eval returned false
+                        if (!lastIfResult) continue; 
                     } else {
                         lastIfResult = null;
                         if (!item.enabled) continue;
@@ -2395,9 +2293,8 @@
                             if (!item.varName || !item.varName.trim()) throw new Error("Variable declaration identifier is required.");
                             
                             const varName = item.varName.trim();
-                            const val = evaluateTemplate(pipelineDoc.documentElement, item.value || "", null, {errors:[], warnings:[]}, newScopeChain);
+                            const val = evaluateCompiledTemplate(compileTemplate(item.value || ""), pipelineDoc.documentElement, null, {errors:[], warnings:[]}, newScopeChain);
                             
-                            // Re-declare functionality replaces closest tracked var down the hierarchy line.
                             let updated = false;
                             for (let s = newScopeChain.length - 1; s >= 0; s--) {
                                 if (newScopeChain[s].vars.has(varName)) {
@@ -2417,15 +2314,15 @@
                                     throw new Error(`Constant constraint violation: '${constName}' has already been bound in active scope limit.`);
                                 }
                             }
-                            const val = evaluateTemplate(pipelineDoc.documentElement, item.value || "", null, {errors:[], warnings:[]}, newScopeChain);
+                            const val = evaluateCompiledTemplate(compileTemplate(item.value || ""), pipelineDoc.documentElement, null, {errors:[], warnings:[]}, newScopeChain);
                             currentScope.consts.set(constName, val);
 
                         } else if (item.type === 'counter') {
                             if (!item.varName || !item.varName.trim()) throw new Error("Counter declaration identifier is required.");
                             const counterName = item.varName.trim();
                             
-                            const startStr = evaluateTemplate(pipelineDoc.documentElement, item.value || "1", null, {errors:[], warnings:[]}, newScopeChain);
-                            const incStr = evaluateTemplate(pipelineDoc.documentElement, item.increment || "1", null, {errors:[], warnings:[]}, newScopeChain);
+                            const startStr = evaluateCompiledTemplate(compileTemplate(item.value || "1"), pipelineDoc.documentElement, null, {errors:[], warnings:[]}, newScopeChain);
+                            const incStr = evaluateCompiledTemplate(compileTemplate(item.increment || "1"), pipelineDoc.documentElement, null, {errors:[], warnings:[]}, newScopeChain);
                             const startNum = parseFloat(startStr) || 1;
                             const incNum = parseFloat(incStr) || 1;
                             
@@ -2441,6 +2338,10 @@
 
                         } else if (item.type === 'rule' && item.xpath.trim()) {
                             const result = pipelineDoc.evaluate(item.xpath.trim(), pipelineDoc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                            
+                            const compiledAttr = compileTemplate(item.attrName);
+                            const compiledVal = compileTemplate(item.value);
+
                             for (let i = 0; i < result.snapshotLength; i++) {
                                 let originalMatchedNode = result.snapshotItem(i);
                                 let node = originalMatchedNode;
@@ -2448,7 +2349,7 @@
                                 if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
                                 if (node.nodeType !== Node.ELEMENT_NODE) continue;
 
-                                applyTransformation(node, item.action, item.attrName, item.value, originalMatchedNode, item, newScopeChain);
+                                applyTransformation(node, item.action, compiledAttr, compiledVal, originalMatchedNode, item, newScopeChain);
                             }
                         }
                     } catch (err) {
@@ -2458,7 +2359,6 @@
                         break;
                     }
                 }
-                // Memory implicitly drops/dereferences the current scope upon execution closure avoiding leaks.
             };
 
             processRuleList(rulesList, []);
@@ -2472,15 +2372,11 @@
             renderRulesPipelineUi();
         }
 
-        /**
-         * Triggers local JSON serialization and file downloads of registered automation pipelines.
-         */
         function exportRulesChain() {
             if (rulesList.length === 0) {
                 alert("Pipeline array is completely vacant.");
                 return;
             }
-            // Strip out temporary errors/warnings before exporting
             const safeList = JSON.parse(JSON.stringify(rulesList));
             const traverse = (arr) => {
                 arr.forEach(a => {
@@ -2505,10 +2401,6 @@
             URL.revokeObjectURL(url);
         }
 
-        /**
-         * Parses and imports an external JSON config representing pipeline rules.
-         * @param {Event} event - File Upload Event target containing the file descriptor.
-         */
         function importRulesChain(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -2561,21 +2453,11 @@
             event.target.value = ''; 
         }
 
-        /**
-         * Replaces dynamic HTML symbol entities preventing render injection risks.
-         * @param {string} str - Source parameter payload.
-         * @returns {string} Sanitized text blocks.
-         */
         function escapeHtml(str) {
             if (!str) return '';
             return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
 
-        /**
-         * Interrogates mutated XML document tree outputs to isolate exact nodes modified during
-         * execution. Highlights mutated nodes visually and adds badges (`[ADD]`/`[MOD]`) 
-         * using faded visual styling based on hierarchical distances.
-         */
         function runDiffComparisonHighlighter() {
             const outText = xmlOutput.value;
             
@@ -2583,13 +2465,12 @@
                 return;
             }
 
-            let directMutatedNodes = new Map(); // Tracked Node -> mutation classification: 'added' | 'modified'
+            let directMutatedNodes = new Map();
 
             for (let [outNode, outVisual] of nodeMapOutput.entries()) {
                 const outAbsPath = generateAbsoluteXPath(outNode);
                 let matchedInNode = null;
 
-                // Attempt corresponding path mapping resolution inside input registry
                 for (let [inNode, inVisual] of nodeMapInput.entries()) {
                     if (generateAbsoluteXPath(inNode) === outAbsPath) {
                         matchedInNode = inNode;
@@ -2602,7 +2483,6 @@
                 } else {
                     let hasAttributeDelta = false;
                     
-                    // Detect added or updated attribute structures
                     Array.from(outNode.attributes).forEach(attr => {
                         const inAttrVal = matchedInNode.getAttribute(attr.name);
                         if (inAttrVal === null || inAttrVal !== attr.value) {
@@ -2613,14 +2493,12 @@
                         }
                     });
 
-                    // Detect removed attribute configurations
                     Array.from(matchedInNode.attributes).forEach(inAttr => {
                         if (!outNode.hasAttribute(inAttr.name)) {
                             hasAttributeDelta = true;
                         }
                     });
 
-                    // Compare child text node segments
                     let childTextOut = "";
                     let childTextIn = "";
                     Array.from(outNode.childNodes).forEach(c => { if(c.nodeType === Node.TEXT_NODE) childTextOut += c.nodeValue.trim(); });
@@ -2632,7 +2510,6 @@
                 }
             }
 
-            // Assign structural color styles based on hierarchical distance from direct mutations
             for (let [outNode, outVisual] of nodeMapOutput.entries()) {
                 let currentDistance = -1;
 
@@ -2673,10 +2550,6 @@
             }
         }
 
-        /**
-         * Parses input/output XML, generates internal map references, and triggers UI tree draw loops.
-         * @param {string} targetWorkspace - Chosen workspace target ('input' | 'output')
-         */
         function parseAndRenderTree(targetWorkspace = 'input') {
             const isInput = (targetWorkspace === 'input');
             const targetTextArea = isInput ? xmlInput : xmlOutput;
@@ -2728,11 +2601,6 @@
             }
         }
 
-        /**
-         * Generates an absolute XPath expression pointing directly to a specific DOM node.
-         * @param {Node} node - Target document element or attribute node.
-         * @returns {string} Fully qualified unique absolute XPath expression.
-         */
         function generateAbsoluteXPath(node) {
             if (!node || node.nodeType === Node.DOCUMENT_NODE) return "";
             if (node.nodeType === Node.ATTRIBUTE_NODE) {
@@ -2764,10 +2632,6 @@
             return path;
         }
 		
-        /**
-         * Injects target XPath patterns directly into global search inputs.
-         * @param {string} elementId - ID string of target input container.
-         */
         function copyXPathToSearch(elementId) {
             const el = (elementId === 'modalXPathAbsolute') ? modalXPathAbsolute : 
                        (elementId === 'modalXPathSimilar') ? modalXPathSimilar : 
@@ -2779,16 +2643,6 @@
             xpathInput.focus();
         }
 
-        /**
-         * Recursively processes XML node hierarchies and constructs interactive DOM Tree components.
-         * Registers visual position arrays allowing bidirectional hover/click code highlighting.
-         * @param {Element} node - Target XML Element configuration.
-         * @param {boolean} isStaticPreview - Suppress event interaction setups when true.
-         * @param {Array<Object>} allTags - Extracted visual parsing metadata objects.
-         * @param {Array<number>} trackingIndexRef - Single element tracking array reference representing current pointer step.
-         * @param {string} workspaceSource - Identifies the active panel tree ('input' | 'output')
-         * @returns {HTMLDivElement} Configured interactive DOM layout container.
-         */
         function buildTreeNode(node, isStaticPreview = false, allTags = [], trackingIndexRef = [0], workspaceSource = 'input') {
             if (node.nodeType !== Node.ELEMENT_NODE) return null;
 
@@ -3133,6 +2987,9 @@
                 
                 const isolatedScopeList = [{ vars: new Map(), consts: new Map(), counters: new Map() }];
 
+                const compiledAttr = compileTemplate(attrName);
+                const compiledVal = compileTemplate(newVal);
+
                 for (let i = 0; i < result.snapshotLength; i++) {
                     let originalMatchedNode = result.snapshotItem(i);
                     let node = originalMatchedNode;
@@ -3140,8 +2997,7 @@
                     if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
                     if (node.nodeType !== Node.ELEMENT_NODE) continue;
 
-                    // Execute without a shared active contextual loop scope block mapping. 
-                    applyTransformation(node, action, attrName, newVal, originalMatchedNode, null, isolatedScopeList);
+                    applyTransformation(node, action, compiledAttr, compiledVal, originalMatchedNode, null, isolatedScopeList);
                 }
                 updateSourceFromDOM(currentXmlDoc);
             } catch (err) {
