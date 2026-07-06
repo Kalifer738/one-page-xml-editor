@@ -46,6 +46,9 @@
 
         /* Status Icons */
         .status-icon:hover .tooltip { display: block; }
+        
+        /* Expression Editor Overlays */
+        .hl-match { background-color: rgba(255, 255, 255, 0.15); border-radius: 2px; }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col font-sans relative">
@@ -104,7 +107,11 @@
                 <div class="flex flex-col gap-2">
                     <label class="text-xs font-semibold uppercase tracking-wider text-gray-400">XPath Expression Selector (Auto-Evaluates)</label>
                     <div class="flex gap-2">
-                        <input type="text" id="xpathInput" placeholder="e.g., //employee/name or //employee/@id" class="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm font-mono text-gray-200 focus:outline-none focus:border-blue-500">
+                        <div class="relative w-full group flex">
+                            <div id="hl-backdrop-xpathInput" class="absolute inset-0 pointer-events-none px-3 py-2 text-sm font-mono whitespace-pre overflow-hidden border border-transparent"></div>
+                            <input type="text" id="xpathInput" placeholder="e.g., //employee/name or //employee/@id" class="w-full relative z-10 bg-gray-950/50 text-transparent caret-white text-sm font-mono px-3 py-2 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 expr-editor-input" oninput="syncHighlight('xpathInput'); clearTimeout(xpathDebounceTimer); xpathDebounceTimer = setTimeout(runXPathQuery, 300);" onscroll="syncHighlight('xpathInput')" onkeyup="syncHighlight('xpathInput')" onclick="syncHighlight('xpathInput')">
+                            <button onclick="openExpressionEditor('xpathInput')" class="absolute right-1 top-0.5 z-20 text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 bg-gray-900 border border-gray-700 rounded px-1.5 shadow transition cursor-pointer" title="Expand Editor">⛶</button>
+                        </div>
                     </div>
                 </div>
                 <div class="flex flex-col gap-2">
@@ -120,8 +127,16 @@
                             <option value="modifyText">Modify Node Text</option>
                             <option value="addNode">Add New Child Node</option>
                         </select>
-                        <input type="text" id="massEditAttrName" placeholder="Attribute Name (Tokens ok)" class="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-2 py-2 text-sm font-mono text-blue-400 focus:outline-none focus:border-blue-500">
-                        <input type="text" id="massEditValue" placeholder="Expression Value / raw XML" class="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-2 py-2 text-sm font-mono text-emerald-400 focus:outline-none focus:border-blue-500">
+                        <div id="massEditAttrName-wrapper" class="relative flex-1 group flex">
+                            <div id="hl-backdrop-massEditAttrName" class="absolute inset-0 pointer-events-none px-2 py-2 text-sm font-mono whitespace-pre overflow-hidden border border-transparent"></div>
+                            <input type="text" id="massEditAttrName" placeholder="Attribute Name (Tokens ok)" class="w-full relative z-10 bg-gray-950/50 text-transparent caret-white text-sm font-mono px-2 py-2 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 expr-editor-input" oninput="syncHighlight('massEditAttrName')" onscroll="syncHighlight('massEditAttrName')" onkeyup="syncHighlight('massEditAttrName')" onclick="syncHighlight('massEditAttrName')">
+                            <button onclick="openExpressionEditor('massEditAttrName')" class="absolute right-1 top-0.5 z-20 text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 bg-gray-900 border border-gray-700 rounded px-1.5 shadow transition cursor-pointer" title="Expand Editor">⛶</button>
+                        </div>
+                        <div id="massEditValue-wrapper" class="relative flex-1 group flex">
+                            <div id="hl-backdrop-massEditValue" class="absolute inset-0 pointer-events-none px-2 py-2 text-sm font-mono whitespace-pre overflow-hidden border border-transparent"></div>
+                            <input type="text" id="massEditValue" placeholder="Expression Value / raw XML" class="w-full relative z-10 bg-gray-950/50 text-transparent caret-white text-sm font-mono px-2 py-2 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 expr-editor-input" oninput="syncHighlight('massEditValue')" onscroll="syncHighlight('massEditValue')" onkeyup="syncHighlight('massEditValue')" onclick="syncHighlight('massEditValue')">
+                            <button onclick="openExpressionEditor('massEditValue')" class="absolute right-1 top-0.5 z-20 text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 bg-gray-900 border border-gray-700 rounded px-1.5 shadow transition cursor-pointer" title="Expand Editor">⛶</button>
+                        </div>
                         <button onclick="applyMassEdit()" class="bg-red-600 hover:bg-red-500 text-sm font-medium py-2 px-3 rounded-lg transition cursor-pointer truncate shrink-0 shadow">
                             ⚙️ Apply Change
                         </button>
@@ -273,6 +288,28 @@
         </main>
     </div>
 
+    <!-- Expression Modal Base (QoL 3 & 4) -->
+    <div id="exprEditorModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+        <div class="bg-gray-900 border border-gray-700 w-full max-w-4xl h-[75vh] rounded-xl shadow-2xl flex flex-col overflow-hidden">
+            <div class="bg-gray-850 px-5 py-3 border-b border-gray-700 flex justify-between items-center shrink-0">
+                <h3 class="text-blue-400 font-bold font-mono text-lg">✨ Expression & Token Editor</h3>
+                <div class="flex gap-3">
+                    <button onclick="formatExpandExpressionModal()" class="bg-purple-600 hover:bg-purple-500 text-xs px-3 py-1.5 rounded-lg text-white font-semibold shadow transition duration-150">🖌️ Expand Structure</button>
+                    <button onclick="formatCollapseExpressionModal()" class="bg-purple-600 hover:bg-purple-500 text-xs px-3 py-1.5 rounded-lg text-white font-semibold shadow transition duration-150">🖌️ Collapse Structure</button>
+                    <button onclick="closeExpressionEditor()" class="text-gray-400 hover:text-white text-2xl transition duration-150 cursor-pointer">&times;</button>
+                </div>
+            </div>
+            <div class="flex-1 relative bg-gray-950 overflow-hidden">
+                <div id="exprModalBackdrop" class="absolute inset-0 pointer-events-none p-5 text-sm font-mono whitespace-pre overflow-auto border border-transparent pb-32"></div>
+                <textarea id="exprModalTextarea" spellcheck="false" oninput="syncModalHighlight()" onscroll="syncModalScroll()" onkeyup="syncModalHighlight()" onclick="syncModalHighlight()" class="absolute inset-0 w-full h-full z-10 bg-transparent text-transparent caret-white text-sm font-mono p-5 resize-none focus:outline-none pb-32"></textarea>
+            </div>
+            <div class="bg-gray-850 px-5 py-3 border-t border-gray-700 flex justify-end gap-3 shrink-0">
+                <button onclick="closeExpressionEditor()" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg text-xs font-semibold shadow transition cursor-pointer">Cancel</button>
+                <button onclick="saveExpressionEditor()" class="bg-emerald-600 hover:bg-emerald-500 px-5 py-2 rounded-lg text-xs font-semibold shadow transition cursor-pointer">Save & Apply</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Help Modal (Tokens Documentation) -->
     <div id="helpModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
         <div class="bg-gray-800 border border-gray-700 w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden flex flex-col">
@@ -288,29 +325,27 @@
                 <div class="space-y-3">
                     <div class="bg-gray-950 p-3 rounded border border-gray-800">
                         <h3 class="text-amber-400 font-mono font-bold mb-1">{var["name"]} / {const["name"]} / {counter["name"]}</h3>
-                        <p class="text-xs">Extracts data from a previously declared Variable, Constant, or Counter in the current or parent group. Variables are destroyed when leaving their group.</p>
-                        <p class="text-xs text-gray-500 mt-1">Example: <span class="text-emerald-400">{var["user_id"]}</span></p>
-                        <p class="text-xs text-gray-500 mt-1">Counters return their current value and increment immediately after evaluation.</p>
+                        <p class="text-xs">Extracts data from a previously declared Variable, Constant, or Counter. You can now also assign values inline during execution.</p>
+                        <p class="text-xs text-gray-500 mt-1">Extraction: <span class="text-emerald-400">{var["user_id"]}</span></p>
+                        <p class="text-xs text-gray-500 mt-1">Assignment: <span class="text-emerald-400">{var["user_id"]="12345"}</span> or <span class="text-emerald-400">{var["user_id"]=att["id"]}</span></p>
                     </div>
 
                     <div class="bg-gray-950 p-3 rounded border border-gray-800">
                         <h3 class="text-amber-400 font-mono font-bold mb-1">{attribute[n]} / {attribute["name"]} / {att["name"]}</h3>
                         <p class="text-xs">Extracts an attribute from the currently evaluated element by numerical index or exact quoted key. (<code>att</code> is a valid shorthand alias).</p>
                         <p class="text-xs text-gray-500 mt-1">Example: <span class="text-emerald-400">id_{attribute["id"]}</span> → <span class="text-emerald-400">id_101</span></p>
-                        <p class="text-xs text-gray-500 mt-1">Example: <span class="text-emerald-400">{att[-0]}</span> → Returns the last attribute value.</p>
                     </div>
 
                     <div class="bg-gray-950 p-3 rounded border border-gray-800">
-                        <h3 class="text-amber-400 font-mono font-bold mb-1">{child[n]} / {child["tag"][n]}</h3>
-                        <p class="text-xs">Extracts inner text of direct children or chains nested commands. Use negative indices like <code>-0</code> to count from the end backwards.</p>
+                        <h3 class="text-amber-400 font-mono font-bold mb-1">{child[n]} / {child["tag"][n]} / {ancestor[n]}</h3>
+                        <p class="text-xs">Extracts relative node elements (children or ancestors). Can chain sub-commands like fetching properties of children.</p>
                         <ul class="list-disc list-inside ml-4 mt-1 text-xs text-gray-400">
-                            <li><span class="text-emerald-400">{child[0]}</span>: Gets the first child's text.</li>
                             <li><span class="text-emerald-400">{child[-0]}</span>: Gets the last child's text.</li>
-                            <li><span class="text-emerald-400">{child["author"][1]}</span>: Gets 2nd child of exact type "author".</li>
                             <li><span class="text-emerald-400">{child[0](att["id"])}</span>: Retrieves the "id" of the 1st child node.</li>
+                            <li><span class="text-emerald-400">{ancestor["section"][0](att["name"])}</span>: Gets "name" of the first ancestor matching "section".</li>
                         </ul>
                     </div>
-                    
+
                     <div class="bg-gray-950 p-3 rounded border border-gray-800">
                         <h3 class="text-amber-400 font-mono font-bold mb-1">{ancestor[n]} / {ancestor["tag"][n]} / {parent(...)}</h3>
                         <p class="text-xs">Evaluates any token in the context of an ancestral element. <code>parent(...)</code> is kept for backward compatibility and is equivalent to <code>ancestor[0](...)</code>.</p>
@@ -323,30 +358,43 @@
 
                     <div class="bg-gray-950 p-3 rounded border border-gray-800">
                         <h3 class="text-amber-400 font-mono font-bold mb-1">{value}</h3>
-                        <p class="text-xs">Available only when your XPath targets an attribute directly (e.g., <code class="bg-gray-800 px-1 rounded">//@id</code>). Inserts the value of that matched attribute.</p>
+                        <p class="text-xs">Available when your XPath targets an attribute directly (e.g., <code class="bg-gray-800 px-1 rounded">//@id</code>) or a text node (e.g., <code class="bg-gray-800 px-1 rounded">/text()</code>). Inserts the matched value.</p>
+                    </div>
+                    
+                    <div class="bg-gray-950 p-3 rounded border border-gray-800">
+                        <h3 class="text-amber-400 font-mono font-bold mb-1">{math(op, arg1, arg2)}</h3>
+                        <p class="text-xs">Performs math operations on tokens or numbers. Supports: <code class="text-blue-300">sum</code>, <code class="text-blue-300">sub</code>, <code class="text-blue-300">mul</code>, <code class="text-blue-300">div</code>.</p>
+                        <p class="text-xs text-gray-500 mt-1">Example: <span class="text-emerald-400">{math(sum, value, 10)}</span></p>
+                        <p class="text-xs text-gray-500 mt-0.5">Example: <span class="text-emerald-400">{math(mul, att["price"], var["tax"])}</span></p>
                     </div>
 
-                    <h3 class="font-bold text-gray-200 mt-4 border-b border-gray-700 pb-1">Value Modifiers</h3>
+                    <h3 class="font-bold text-gray-200 mt-4 border-b border-gray-700 pb-1">Value Modifiers & Splitting</h3>
                     
                     <div class="bg-gray-950 p-3 rounded border border-gray-800">
                         <h3 class="text-blue-400 font-mono font-bold mb-1">token[start:take] <span class="text-gray-400 font-sans font-normal text-xs">(Slicing)</span></h3>
-                        <p class="text-xs">Extract substrings. Append to any evaluated token. Use negative start to base calculation from the end backwards (e.g., -0 starts directly at the end).</p>
+                        <p class="text-xs">Extract substrings. Append to any evaluated token. Use negative start to base calculation from the end backwards.</p>
                         <p class="text-xs text-gray-500 mt-1">Example: <span class="text-emerald-400">{att["date"][3:7]}</span> takes 7 characters starting at index 3.</p>
                         <p class="text-xs text-gray-500 mt-0.5">Example: <span class="text-emerald-400">{value[-0:4]}</span> on "hello" starts at the end, returning backwards giving "llo".</p>
                     </div>
 
                     <div class="bg-gray-950 p-3 rounded border border-gray-800">
-                        <h3 class="text-blue-400 font-mono font-bold mb-1">token["separator":start:take] <span class="text-gray-400 font-sans font-normal text-xs">(Splitting)</span></h3>
-                        <p class="text-xs">Split strings into arrays by separator, slice the array with <em>start</em> and <em>take</em>, then join back.</p>
+                        <h3 class="text-blue-400 font-mono font-bold mb-1">token[separator:start:take] <span class="text-gray-400 font-sans font-normal text-xs">(Splitting)</span></h3>
+                        <p class="text-xs">Split strings into arrays by separator, slice the array with <em>start</em> and <em>take</em>, then join back. Separator can be static (quoted) or a dynamic token expression.</p>
                         <p class="text-xs text-gray-500 mt-1">Example: <span class="text-emerald-400">{att["path"]["/":0:2]}</span> splits by "/" and keeps the first 2 segments.</p>
+                        <p class="text-xs text-gray-500 mt-0.5">Example: <span class="text-emerald-400">{att["myName"][parent(att["id"]):1:2]}</span> splits by the parent's dynamic ID.</p>
                     </div>
 
-                    <h3 class="font-bold text-gray-200 mt-4 border-b border-gray-700 pb-1">Other Features</h3>
+                    <h3 class="font-bold text-gray-200 mt-4 border-b border-gray-700 pb-1">Conditions & Evaluation Trees</h3>
+                    
+                    <div class="bg-gray-950 p-3 rounded border border-gray-800 mb-3 mt-3">
+                        <h3 class="text-blue-400 font-mono font-bold mb-1">{if(condition)(true)(false)} <span class="text-gray-400 font-sans font-normal text-xs">(Inline Conditional)</span></h3>
+                        <p class="text-xs">Evaluates a condition and executes the corresponding block. Supports <code>==</code>, <code>!=</code>, or basic truthiness.</p>
+                        <p class="text-xs text-gray-500 mt-1">Example: <span class="text-emerald-400">{if(parent(att["id"]) == "K19235")("discard")("keep")}</span></p>
+                        <p class="text-xs text-gray-500 mt-0.5">Example: <span class="text-emerald-400">{if(att["status"] == "active")(child[0])}</span></p>
+                    </div>
+
                     <ul class="list-disc list-inside text-xs text-gray-400 space-y-1">
-                        <li><strong>Groups:</strong> Organize multiple rules into foldable named groups. Can be nested inside other groups.</li>
-                        <li><strong>Shifting:</strong> Use ◀ and ▶ to move rules in and out of nested groups.</li>
-                        <li><strong>Prepending:</strong> New rules added to a scope appear at the top.</li>
-                        <li><strong>IF/ELSE Conditions:</strong> Set blocks to evaluate dynamically based on token results. False paths skip the block.</li>
+                        <li><strong>Group IF blocks:</strong> If you supply a pure XPath string to a Group's IF block (e.g., <code>//item</code>), the Group will run if the XPath matches at least 1 node in the tree.</li>
                     </ul>
                 </div>
             </div>
@@ -453,6 +501,11 @@
         let xpathDebounceTimer = null;             // Handler for debouncing rapid XPath queries
         let activeLastMatchedSnapshotRawText = ""; // XML text buffer holding results of current XPath query
         let inputHistoryStack = [];                // XML string modification stack for editor UNDO
+        
+        // Performance Override Variables
+        let forceRenderInputTree = false;          // True if user overrides the large-file lazy tree skip
+        let forceRenderOutputTree = false;         // True if user overrides on the pipeline comparison side
+        let activeHighlightDebounceTimer = null;   // Scroll/Scope highlighting debouncer
 
         // ==========================================
         // 2a. DRAG AND DROP XML REORGANIZER STATE VARIABLES
@@ -488,6 +541,7 @@
         let rulesList = [];                        // Array containing batch transformation rules in current pipeline
         let deletedRulesStack = [];                // Rule restoration stack for Ctrl+Z rule deletion UNDO
         let syntaxCheckTimers = {};                // For debouncing live token syntax checks
+        let activeEditorInputId = null;            // Tracks input bound to Expression Editor Modal
 
         // ==========================================
         // 4. XML COMPARISON PANEL DOM REFERENCES
@@ -518,17 +572,389 @@
         let collapsedNodePaths = new Set();
 
         // ==========================================
+        // SYNTAX HIGHLIGHTING ENGINE (QoL Features)
+        // ==========================================
+
+        function syncHighlight(id) {
+            const input = document.getElementById(id);
+            const backdrop = document.getElementById('hl-backdrop-' + id);
+            if(!input || !backdrop) return;
+            
+            const val = input.value;
+            const selStart = input.selectionStart;
+            
+            backdrop.innerHTML = highlightExpression(val, selStart);
+            backdrop.scrollTop = input.scrollTop;
+            backdrop.scrollLeft = input.scrollLeft;
+        }
+
+        function syncModalHighlight() {
+            const textarea = document.getElementById('exprModalTextarea');
+            const backdrop = document.getElementById('exprModalBackdrop');
+            if(!textarea || !backdrop) return;
+            
+            backdrop.innerHTML = highlightExpression(textarea.value, textarea.selectionStart);
+        }
+
+        function syncModalScroll() {
+            const textarea = document.getElementById('exprModalTextarea');
+            const backdrop = document.getElementById('exprModalBackdrop');
+            if(textarea && backdrop) {
+                backdrop.scrollTop = textarea.scrollTop;
+                backdrop.scrollLeft = textarea.scrollLeft;
+            }
+        }
+
+        function highlightExpression(text, cursor) {
+            let result = "";
+            let openCloseMap = {'{':'}', '[':']', '(':')'};
+            let closeOpenMap = {'}':'{', ']':'[', ')':'('};
+            
+            // 1. Identify active brackets for match highlighting
+            let matchIdx = -1;
+            let targetIdx = -1;
+            
+            if (cursor > 0 && "{}[]()".includes(text[cursor-1])) {
+                targetIdx = cursor - 1;
+            } else if (cursor < text.length && "{}[]()".includes(text[cursor])) {
+                targetIdx = cursor;
+            }
+            
+            if (targetIdx !== -1) {
+                let char = text[targetIdx];
+                let isForward = !!openCloseMap[char];
+                let search = isForward ? openCloseMap[char] : closeOpenMap[char];
+                let step = isForward ? 1 : -1;
+                let depth = 0;
+                for (let i = targetIdx; i >= 0 && i < text.length; i += step) {
+                    if (text[i] === char) depth++;
+                    else if (text[i] === search) depth--;
+                    if (depth === 0) {
+                        matchIdx = i;
+                        break;
+                    }
+                }
+            }
+            
+            // 2. Tokenize and apply Tailwind styles based on character classifications
+            let i = 0;
+            while (i < text.length) {
+                let char = text[i];
+                let isMatched = (i === targetIdx || i === matchIdx);
+                let bgClass = isMatched ? "hl-match " : "";
+                
+                if ("{}".includes(char)) {
+                    result += `<span class="${bgClass}text-pink-400 font-bold">${char}</span>`;
+                    i++;
+                } else if ("[]".includes(char)) {
+                    result += `<span class="${bgClass}text-amber-400">${char}</span>`;
+                    i++;
+                } else if ("()".includes(char)) {
+                    result += `<span class="${bgClass}text-emerald-400">${char}</span>`;
+                    i++;
+                } else if (char === '"' || char === "'") {
+                    let end = i + 1;
+                    while (end < text.length && text[end] !== char) {
+                        if (text[end] === '\\') end++;
+                        end++;
+                    }
+                    if (end < text.length) end++;
+                    result += `<span class="text-purple-400">${escapeHtml(text.substring(i, end))}</span>`;
+                    i = end;
+                } else {
+                    let keywordMatch = text.substring(i).match(/^(var|const|counter|if|parent|att|attribute|child|ancestor|value|math)\b/);
+                    if (keywordMatch) {
+                        result += `<span class="text-blue-400 font-bold">${keywordMatch[1]}</span>`;
+                        i += keywordMatch[1].length;
+                    } else {
+                        let nextSpecial = text.substring(i).search(/[{}[\]()"' \n\r]/);
+                        if (nextSpecial === -1) {
+                            result += escapeHtml(text.substring(i));
+                            break;
+                        } else if (nextSpecial === 0) {
+                            result += escapeHtml(text[i]);
+                            i++;
+                        } else {
+                            result += escapeHtml(text.substring(i, i + nextSpecial));
+                            i += nextSpecial;
+                        }
+                    }
+                }
+            }
+            return result;
+        }
+
+        function openExpressionEditor(id) {
+            activeEditorInputId = id;
+            document.getElementById('exprModalTextarea').value = document.getElementById(id).value;
+            document.getElementById('exprEditorModal').classList.remove('hidden');
+            syncModalHighlight();
+        }
+
+        function closeExpressionEditor() {
+            document.getElementById('exprEditorModal').classList.add('hidden');
+            activeEditorInputId = null;
+        }
+
+        function saveExpressionEditor() {
+            if (activeEditorInputId) {
+                let input = document.getElementById(activeEditorInputId);
+                input.value = document.getElementById('exprModalTextarea').value;
+                syncHighlight(activeEditorInputId);
+                input.dispatchEvent(new Event('input'));
+            }
+            closeExpressionEditor();
+        }
+
+        function formatExpandExpressionModal() {
+            let text = document.getElementById('exprModalTextarea').value;
+            let formatted = "";
+            let indent = 0;
+            let inString = false;
+            let stringChar = "";
+            
+            for(let i = 0; i < text.length; i++) {
+                let char = text[i];
+                if (inString) {
+                    formatted += char;
+                    if (char === stringChar && text[i-1] !== '\\') inString = false;
+                    continue;
+                }
+                if (char === '"' || char === "'") {
+                    inString = true;
+                    stringChar = char;
+                    formatted += char;
+                    continue;
+                }
+                
+                if ("{([".includes(char)) {
+                    indent++;
+                    formatted += char + "\n" + "  ".repeat(indent);
+                } else if ("})]".includes(char)) {
+                    indent = Math.max(0, indent - 1);
+                    if (formatted.endsWith("  ")) formatted = formatted.slice(0, -2);
+                    if (!formatted.endsWith("\n")) formatted += "\n" + "  ".repeat(indent);
+                    formatted += char;
+                } else if (char !== ' ' && char !== '\n' && char !== '\r') {
+                    formatted += char;
+                }
+            }
+            document.getElementById('exprModalTextarea').value = formatted;
+            syncModalHighlight();
+        }
+
+        function formatCollapseExpressionModal() {
+            let text = document.getElementById('exprModalTextarea').value;
+            let formatted = "";
+            let inString = false;
+            let stringChar = "";
+            let lastChar = "";
+
+            for (let i = 0; i < text.length; i++) {
+                let char = text[i];
+
+                // Preserve strings
+                if (inString) {
+                    formatted += char;
+                    if (char === stringChar && lastChar !== '\\') inString = false;
+                    lastChar = char;
+                    continue;
+                }
+
+                // Handle string start
+                if (char === '"' || char === "'") {
+                    inString = true;
+                    stringChar = char;
+                    formatted += char;
+                    lastChar = char;
+                    continue;
+                }
+
+                // Collapse whitespace and newlines
+                if (char === '\n' || char === '\r' || char === '\t' || char === ' ') {
+                    if (formatted.length > 0 && lastChar !== ' ' && lastChar !== '{' && lastChar !== '(' && lastChar !== '[' && lastChar !== '}' && lastChar !== ')' && lastChar !== ']' && lastChar !== ';') {
+                        formatted += ' ';
+                        lastChar = ' ';
+                    }
+                    continue;
+                }
+
+                formatted += char;
+                lastChar = char;
+            }
+
+            // Clean up trailing spaces before specific characters
+            formatted = formatted.replace(/\s+([{}()\[\];])/g, '$1');
+            
+            document.getElementById('exprModalTextarea').value = formatted.trim();
+            if (typeof syncModalHighlight === 'function') syncModalHighlight();
+        }
+
+        function buildExprInput(id, value, placeholder, oninputStr, extraClasses = "") {
+            // Strip structural grid classes from backdrop to ensure input alignment remains undisturbed
+            let wrapperClasses = extraClasses.match(/col-span-\w+|sm:col-span-\w+/g) ? extraClasses.match(/col-span-\w+|sm:col-span-\w+/g).join(' ') : '';
+            return `
+            <div class="relative w-full group flex ${wrapperClasses}" id="${id}-wrapper">
+                <div id="hl-backdrop-${id}" class="absolute inset-0 pointer-events-none px-2.5 py-1.5 text-xs font-mono whitespace-pre overflow-hidden border border-transparent ${extraClasses.replace(/bg-[^\s]+/, '').replace(/col-span-\w+|sm:col-span-\w+/g, '')}"></div>
+                <input type="text" id="${id}" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}" oninput="${oninputStr}; syncHighlight('${id}');" onscroll="syncHighlight('${id}')" onkeyup="syncHighlight('${id}')" onclick="syncHighlight('${id}')" class="w-full relative z-10 bg-gray-950/50 text-transparent caret-white text-xs font-mono px-2.5 py-1.5 border border-gray-800 rounded focus:outline-none focus:border-blue-500 expr-editor-input ${extraClasses}">
+                <button onclick="openExpressionEditor('${id}')" class="absolute right-1 top-0.5 z-20 text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 bg-gray-900 border border-gray-700 rounded px-1.5 shadow transition cursor-pointer" title="Expand Editor">⛶</button>
+            </div>
+            `;
+        }
+
+        // ==========================================
         // TOKEN REFACTOR SYSTEM: PARSERS AND EVALUATORS
         // ==========================================
-        
-        const MODIFIER_SPLIT_RX = /\[(["'])([^"'\n]*?)\1:(-?\d+):(-?\d+)\]$/;
-        const MODIFIER_SLICE_RX = /\[(-?\d+):(-?\d+)\]$/;
 
-        const TOKEN_ATT_RX = /^(?:attribute|att)\[(.*?)\]$/;
-        const TOKEN_COUNTER_RX = /^(?:counter)\[(["'])(.*?)\1\]$/;
-        const TOKEN_VAR_RX = /^(?:var)\[(["'])(.*?)\1\]$/;
-        const TOKEN_CONST_RX = /^(?:const)\[(["'])(.*?)\1\]$/;
-        const TOKEN_REL_RX = /^(child|ancestor)(?:\[(["'])(.*?)\2\])?\[(-?\d+)\](?:\((.*)\))?$/;
+        const TOKEN_ATT_RX = /^\s*(?:attribute|att)\s*\[\s*([\s\S]*?)\s*\]\s*$/;
+        const TOKEN_COUNTER_RX = /^\s*(?:counter)\s*\[\s*(["'])([\s\S]*?)\1\s*\]\s*$/;
+        const TOKEN_VAR_RX = /^\s*(?:var)\s*\[\s*(["'])([\s\S]*?)\1\s*\]\s*$/;
+        const TOKEN_CONST_RX = /^\s*(?:const)\s*\[\s*(["'])([\s\S]*?)\1\s*\]\s*$/;
+        const TOKEN_REL_RX = /^\s*(child|ancestor)\s*(?:\[\s*(["'])([\s\S]*?)\2\s*\])?\s*\[\s*(-?\d+)\s*\]\s*(?:\(\s*([\s\S]*)\s*\))?\s*$/;
+
+        /**
+         * Safely splits strings by commas while respecting nested quotes and brackets.
+         */
+        function safeSplitComma(str) {
+            let result = [];
+            let current = "";
+            let depth = 0;
+            let inDQuote = false;
+            let inSQuote = false;
+
+            for (let i = 0; i < str.length; i++) {
+                const char = str[i];
+                if (char === '"' && !inSQuote && (i === 0 || str[i-1] !== '\\')) inDQuote = !inDQuote;
+                else if (char === "'" && !inDQuote && (i === 0 || str[i-1] !== '\\')) inSQuote = !inSQuote;
+
+                if (!inDQuote && !inSQuote) {
+                    if (char === '(' || char === '[' || char === '{') depth++;
+                    else if (char === ')' || char === ']' || char === '}') depth--;
+                    else if (char === ',' && depth === 0) {
+                        result.push(current);
+                        current = "";
+                        continue;
+                    }
+                }
+                current += char;
+            }
+            result.push(current);
+            return result;
+        }
+
+        /**
+         * Safely extracts nested parenthesis blocks (like condition or true/false evaluations)
+         */
+        function extractBlocks(str, openChar = '(', closeChar = ')') {
+            let blocks = [];
+            let current = "";
+            let depth = 0;
+            let inDQuote = false;
+            let inSQuote = false;
+            let started = false;
+            let i = 0;
+            
+            while (i < str.length) {
+                while (i < str.length && !started && /\s/.test(str[i])) i++;
+                if (i >= str.length) break;
+                
+                if (!started) {
+                    if (str[i] === openChar) {
+                        started = true;
+                        depth = 1;
+                        current = "";
+                        i++;
+                    } else {
+                        break; 
+                    }
+                    continue;
+                }
+                
+                const char = str[i];
+                if (char === '"' && !inSQuote && (i === 0 || str[i-1] !== '\\')) inDQuote = !inDQuote;
+                else if (char === "'" && !inDQuote && (i === 0 || str[i-1] !== '\\')) inSQuote = !inSQuote;
+                
+                if (!inDQuote && !inSQuote) {
+                    if (char === openChar) depth++;
+                    else if (char === closeChar) {
+                        depth--;
+                        if (depth === 0) {
+                            blocks.push(current);
+                            started = false;
+                            i++;
+                            continue;
+                        }
+                    }
+                }
+                current += char;
+                i++;
+            }
+            return blocks;
+        }
+
+        /**
+         * Safely extracts modifier blocks from end of the string supporting deep nested properties
+         */
+        function extractLastModifier(expr) {
+            if (!expr.endsWith(']')) return null;
+            let depth = 0;
+            let inDQuote = false;
+            let inSQuote = false;
+            let startIdx = -1;
+            for (let i = expr.length - 1; i >= 0; i--) {
+                const char = expr[i];
+                if (char === '"' && !inSQuote && (i === 0 || expr[i-1] !== '\\')) inDQuote = !inDQuote;
+                else if (char === "'" && !inDQuote && (i === 0 || expr[i-1] !== '\\')) inSQuote = !inSQuote;
+                
+                if (!inDQuote && !inSQuote) {
+                    if (char === ']') depth++;
+                    else if (char === '[') {
+                        depth--;
+                        if (depth === 0) {
+                            startIdx = i;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (startIdx === -1) return null;
+            
+            const modContent = expr.slice(startIdx + 1, expr.length - 1);
+            const remainder = expr.slice(0, startIdx).trim();
+            
+            let sliceMatch = modContent.match(/^(-?\d+):(-?\d+)$/);
+            if (sliceMatch) {
+                return { remainder, modifier: { type: 'slice', start: sliceMatch[1], take: sliceMatch[2] } };
+            }
+            
+            // Match Dynamic Splitting Blocks ([dynamic_separator:start:take])
+            let splitMatch = modContent.match(/^(.*?):(-?\d+):(-?\d+)$/);
+            if (splitMatch) {
+                let sepExpr = splitMatch[1].trim();
+                let sepIsStatic = false;
+                let sepValue = sepExpr;
+                if ((sepExpr.startsWith('"') && sepExpr.endsWith('"')) || (sepExpr.startsWith("'") && sepExpr.endsWith("'"))) {
+                    sepIsStatic = true;
+                    sepValue = sepExpr.slice(1, -1);
+                }
+                
+                let modifier = {
+                    type: 'split',
+                    start: splitMatch[2],
+                    take: splitMatch[3],
+                    isStaticSep: sepIsStatic,
+                };
+                
+                if (sepIsStatic) {
+                    modifier.sep = sepValue;
+                } else {
+                    modifier.sepToken = compileToken(sepExpr); 
+                }
+                return { remainder, modifier };
+            }
+            
+            return null; 
+        }
 
         /**
          * Pre-compiles a template string into an executable AST array.
@@ -569,27 +995,71 @@
             let baseExpr = expr.trim();
             const modifiers = [];
 
+            // Execute dynamic bracket-matched modifier lookups reading from right to left
             while (true) {
-                let splitMatch = baseExpr.match(MODIFIER_SPLIT_RX);
-                if (splitMatch) {
-                    // Start/Take are kept as strings to preserve the logic of negative zeroes (-0)
-                    modifiers.unshift({ type: 'split', sep: splitMatch[2], start: splitMatch[3], take: splitMatch[4] });
-                    baseExpr = baseExpr.slice(0, -splitMatch[0].length).trim();
-                    continue;
+                let extracted = extractLastModifier(baseExpr);
+                if (extracted) {
+                    modifiers.unshift(extracted.modifier);
+                    baseExpr = extracted.remainder;
+                } else {
+                    break;
                 }
-
-                let sliceMatch = baseExpr.match(MODIFIER_SLICE_RX);
-                if (sliceMatch) {
-                    modifiers.unshift({ type: 'slice', start: sliceMatch[1], take: sliceMatch[2] });
-                    baseExpr = baseExpr.slice(0, -sliceMatch[0].length).trim();
-                    continue;
-                }
-                break;
             }
 
             let instruction = { type: 'unrecognized', baseExpr, modifiers };
 
-            if (baseExpr.startsWith("parent(") && baseExpr.endsWith(")")) {
+            // Feature Addition: Dynamic Variable Assignments ({var["key"]="value"})
+            let varAssignMatch = baseExpr.match(/^\s*(?:var)\s*\[\s*(["'])([\s\S]*?)\1\s*\]\s*=\s*([\s\S]*)$/);
+            // Feature Addition: Math computations ({math(sum, token1, token2)})
+            let mathMatch = baseExpr.match(/^math\(([\s\S]*)\)$/);
+
+            // Native Static Strings Check
+            if ((baseExpr.startsWith('"') && baseExpr.endsWith('"')) || (baseExpr.startsWith("'") && baseExpr.endsWith("'"))) {
+                instruction.type = 'static_string';
+                instruction.value = baseExpr.slice(1, -1);
+            }
+            // Math evaluation blocks
+            else if (mathMatch) {
+                instruction.type = 'math';
+                let argsStr = mathMatch[1];
+                let args = safeSplitComma(argsStr);
+                if (args.length >= 3) {
+                    instruction.mathOp = args[0].trim().replace(/['"]/g, ''); // strip quotes for 'sum' vs sum
+                    instruction.mathArg1 = compileToken(args[1].trim());
+                    instruction.mathArg2 = compileToken(args[2].trim());
+                } else {
+                    instruction.type = 'unrecognized';
+                }
+            }
+            // Inline Conditional Tokens
+            else if (baseExpr.startsWith("if(")) {
+                let blocks = extractBlocks(baseExpr.slice(2)); 
+                if (blocks.length >= 2) {
+                    instruction.type = 'if';
+                    let condStr = blocks[0];
+                    let opMatch = condStr.match(/^\s*([\s\S]*?)\s*(==|!=)\s*([\s\S]*)$/);
+                    
+                    if (opMatch) {
+                        instruction.condLeft = compileToken(opMatch[1].trim());
+                        instruction.condOp = opMatch[2];
+                        instruction.condRight = compileToken(opMatch[3].trim());
+                    } else {
+                        instruction.condLeft = compileToken(condStr.trim());
+                        instruction.condOp = 'truthy';
+                    }
+                    
+                    instruction.trueBlock = compileToken(blocks[1].trim());
+                    if (blocks.length >= 3) {
+                        instruction.falseBlock = compileToken(blocks[2].trim());
+                    }
+                }
+            }
+            else if (varAssignMatch) {
+                instruction.type = 'var_assign';
+                instruction.key = varAssignMatch[2].trim();
+                instruction.valueToken = compileToken(varAssignMatch[3].trim());
+            }
+            else if (baseExpr.startsWith("parent(") && baseExpr.endsWith(")")) {
                 instruction.type = 'parent';
                 instruction.inner = compileToken(baseExpr.slice(7, -1).trim());
             } 
@@ -611,7 +1081,11 @@
             } 
             else if (baseExpr === "value") {
                 instruction.type = 'value';
-            } 
+            }
+            else if (!isNaN(parseFloat(baseExpr)) && isFinite(baseExpr)) {
+                instruction.type = 'static_string';
+                instruction.value = baseExpr.trim();
+            }
             else {
                 let relMatch = baseExpr.match(TOKEN_REL_RX);
                 if (relMatch) {
@@ -646,7 +1120,7 @@
          * Executes a pre-compiled token object configuration.
          */
         function executeCompiledToken(token, node, originalNode, context, scopeChain, rawExpr) {
-            if (!node && !(token.type === 'var' || token.type === 'const' || token.type === 'counter')) {
+            if (!node && !(token.type === 'var' || token.type === 'const' || token.type === 'counter' || token.type === 'static_string' || token.type === 'math')) {
                 return "";
             }
 
@@ -654,6 +1128,77 @@
             let processed = true;
 
             switch (token.type) {
+                case 'static_string':
+                    val = token.value;
+                    break;
+                case 'if': {
+                    let leftVal = executeCompiledToken(token.condLeft, node, originalNode, context, scopeChain, rawExpr);
+                    let conditionMet = false;
+                    
+                    if (token.condOp === 'truthy') {
+                        conditionMet = evaluateTruthiness(leftVal);
+                    } else {
+                        let rightVal = executeCompiledToken(token.condRight, node, originalNode, context, scopeChain, rawExpr);
+                        if (token.condOp === '==') conditionMet = (leftVal === rightVal);
+                        else if (token.condOp === '!=') conditionMet = (leftVal !== rightVal);
+                    }
+                    
+                    if (conditionMet) {
+                        val = executeCompiledToken(token.trueBlock, node, originalNode, context, scopeChain, rawExpr);
+                    } else if (token.falseBlock) {
+                        val = executeCompiledToken(token.falseBlock, node, originalNode, context, scopeChain, rawExpr);
+                    } else {
+                        val = "";
+                    }
+                    break;
+                }
+                case 'math': {
+                    if (!token.mathOp) break; 
+                    let val1 = executeCompiledToken(token.mathArg1, node, originalNode, context, scopeChain, rawExpr);
+                    let val2 = executeCompiledToken(token.mathArg2, node, originalNode, context, scopeChain, rawExpr);
+                    let num1 = parseFloat(val1);
+                    let num2 = parseFloat(val2);
+                    
+                    if (isNaN(num1) || isNaN(num2)) {
+                        let errMsg = `Math evaluation failed: Cannot convert to numbers (${val1}, ${val2}) in {${rawExpr}}`;
+                        if (context && context.errors && !context.errors.includes(errMsg)) {
+                            context.errors.push(errMsg);
+                        }
+                        throw new Error(errMsg);
+                    }
+                    
+                    let op = token.mathOp.toLowerCase();
+                    if (op === 'add' || op === 'sum' || op === '+') val = (num1 + num2).toString();
+                    else if (op === 'sub' || op === 'subtract' || op === '-') val = (num1 - num2).toString();
+                    else if (op === 'mul' || op === 'multiply' || op === '*') val = (num1 * num2).toString();
+                    else if (op === 'div' || op === 'divide' || op === '/') val = (num1 / num2).toString();
+                    else {
+                        let errMsg = `Unknown math operation: ${op} in {${rawExpr}}`;
+                        if (context && context.errors && !context.errors.includes(errMsg)) {
+                            context.errors.push(errMsg);
+                        }
+                        throw new Error(errMsg);
+                    }
+                    
+                    if (val.includes('.')) val = parseFloat(val).toString();
+                    break;
+                }
+                case 'var_assign': {
+                    let valToAssign = executeCompiledToken(token.valueToken, node, originalNode, context, scopeChain, rawExpr);
+                    let updated = false;
+                    for (let s = scopeChain.length - 1; s >= 0; s--) {
+                        if (scopeChain[s].vars.has(token.key)) {
+                            scopeChain[s].vars.set(token.key, valToAssign);
+                            updated = true;
+                            break;
+                        }
+                    }
+                    if (!updated && scopeChain.length > 0) {
+                        scopeChain[scopeChain.length - 1].vars.set(token.key, valToAssign);
+                    }
+                    val = ""; // Value assignments execute invisibly in memory to prevent injecting raw text output
+                    break;
+                }
                 case 'parent': {
                     let parentNode = node ? node.parentNode : null;
                     if (parentNode && parentNode.nodeType === Node.ELEMENT_NODE) {
@@ -674,7 +1219,7 @@
                     val = getScopedValue(scopeChain, token.key, 'const');
                     break;
                 case 'value':
-                    if (originalNode && originalNode.nodeType === Node.ATTRIBUTE_NODE) {
+                    if (originalNode && (originalNode.nodeType === Node.ATTRIBUTE_NODE || originalNode.nodeType === Node.TEXT_NODE)) {
                         val = originalNode.nodeValue || "";
                     }
                     break;
@@ -708,7 +1253,8 @@
                 if (mod.type === 'slice') {
                     val = applySlicing(val, mod.start, mod.take);
                 } else if (mod.type === 'split') {
-                    val = applySplitting(val, mod.sep, mod.start, mod.take);
+                    let sep = mod.isStaticSep ? mod.sep : executeCompiledToken(mod.sepToken, node, originalNode, context, scopeChain, rawExpr);
+                    val = applySplitting(val, sep, mod.start, mod.take);
                 }
             }
 
@@ -731,25 +1277,22 @@
         // Dynamically toggle Mass Edit input fields based on action type
         massEditAction.addEventListener('change', () => {
             const action = massEditAction.value;
+            const attrWrapper = document.getElementById('massEditAttrName-wrapper');
+            const valWrapper = document.getElementById('massEditValue-wrapper');
+            
             if (action === 'addAttr' || action === 'modifyAttr') {
-                massEditAttrName.style.display = 'block';
-                massEditValue.style.display = 'block';
+                attrWrapper.style.display = 'flex';
+                valWrapper.style.display = 'flex';
             } else if (action === 'removeAttr') {
-                massEditAttrName.style.display = 'block';
-                massEditValue.style.display = 'none';
+                attrWrapper.style.display = 'flex';
+                valWrapper.style.display = 'none';
             } else {
-                massEditAttrName.style.display = 'none';
-                massEditValue.style.display = 'block';
+                attrWrapper.style.display = 'none';
+                valWrapper.style.display = 'flex';
             }
         });
         // Initial setup trigger
         massEditAction.dispatchEvent(new Event('change'));
-
-        // Live execution on key entry debouncing setup
-        xpathInput.addEventListener('input', () => {
-            clearTimeout(xpathDebounceTimer);
-            xpathDebounceTimer = setTimeout(runXPathQuery, 300);
-        });
 
         // Sync scroll between textarea and highlight layer
         xmlInput.addEventListener('scroll', () => {
@@ -761,8 +1304,15 @@
         xmlInput.addEventListener('input', (e) => {
             parseAndRenderTree('input');
         });
-        xmlInput.addEventListener('keyup', highlightActiveScope);
-        xmlInput.addEventListener('click', highlightActiveScope);
+        
+        // Debounce structural scope highlighting on keyboard/navigation actions
+        xmlInput.addEventListener('keyup', scheduleHighlightActiveScope);
+        xmlInput.addEventListener('click', scheduleHighlightActiveScope);
+
+        function scheduleHighlightActiveScope() {
+            clearTimeout(activeHighlightDebounceTimer);
+            activeHighlightDebounceTimer = setTimeout(highlightActiveScope, 80);
+        }
 
         // Handles direct local filesystem uploads
         fileInput.addEventListener('change', function(e) {
@@ -772,6 +1322,9 @@
             reader.onload = function(evt) {
                 xmlInput.value = evt.target.result;
                 inputHistoryStack = [];
+                // Reset size overrides when opening a new file
+                forceRenderInputTree = false;
+                forceRenderOutputTree = false;
                 updateInputUndoButtonState();
                 formatXML('input');
             };
@@ -782,6 +1335,7 @@
             if (e.key === 'Escape') {
                 if (!nodeModal.classList.contains('hidden')) closeModal();
                 if (!document.getElementById('helpModal').classList.contains('hidden')) closeHelpModal();
+                if (!document.getElementById('exprEditorModal').classList.contains('hidden')) closeExpressionEditor();
             }
         });
 
@@ -1004,7 +1558,7 @@
                 clearError();
             }
             updateInputUndoButtonState();
-            highlightActiveScope();
+            scheduleHighlightActiveScope();
         }
 
         /**
@@ -1034,7 +1588,7 @@
                 viewPanelInspector.classList.remove('hidden');
                 viewPanelInspector.classList.add('flex');
                 tabInspector.className = "px-4 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer bg-blue-600 text-white shadow-md";
-                highlightActiveScope();
+                scheduleHighlightActiveScope();
             } else if (targetMode === 'pipeline') {
                 viewPanelPipeline.classList.remove('hidden');
                 viewPanelPipeline.classList.add('flex');
@@ -1306,7 +1860,7 @@
             if (sourceStart !== undefined && sourceEnd !== undefined) {
                 xmlInput.focus();
                 xmlInput.setSelectionRange(sourceStart, sourceEnd);
-                highlightActiveScope();
+                scheduleHighlightActiveScope();
                 
                 const xmlString = xmlInput.value;
                 const linesBefore = xmlString.substring(0, sourceStart).split('\n').length - 1;
@@ -1446,7 +2000,7 @@
                 xmlInput.setSelectionRange(start + nextLine.length + 1, end + nextLine.length + 1);
             }
             parseAndRenderTree('input');
-            highlightActiveScope();
+            scheduleHighlightActiveScope();
         }
 
         /**
@@ -1542,6 +2096,7 @@
                 rulesList = [];
             }
             renderRulesPipelineUi();
+            setTimeout(() => document.querySelectorAll('input.expr-editor-input').forEach(el => syncHighlight(el.id)), 0);
         }
 
         /**
@@ -2004,9 +2559,7 @@
                     </select>
                 `;
                 
-                const condExprHtml = item.conditionMode === 'if' ? `
-                    <input type="text" id="input-condexpr-${item.id}" value="${escapeHtml(item.conditionExpr || '')}" placeholder="IF Condition evaluates to true if non-empty (e.g. {var['x']} or {child[0]})" oninput="syncRuleFieldData('${item.id}', 'conditionExpr', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-blue-900/50 rounded px-2.5 py-1.5 text-xs text-blue-300 w-full mb-2 font-mono">
-                ` : '';
+                const condExprHtml = item.conditionMode === 'if' ? buildExprInput(`input-condexpr-${item.id}`, item.conditionExpr || '', 'IF condition evaluates to true if non-empty, or accepts standard XPath (e.g. //item)', `syncRuleFieldData('${item.id}', 'conditionExpr', this.value); scheduleSyntaxCheck('${item.id}')`, 'mb-2') : '';
 
                 // Premium visual drag handlebar icon
                 const dragHandle = `
@@ -2086,16 +2639,16 @@
                         if (item.type === 'counter') {
                             fieldsHtml = `
                                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                    <input type="text" id="input-varname-${item.id}" value="${escapeHtml(item.varName || '')}" placeholder="Counter Name (Req)" oninput="syncRuleFieldData('${item.id}', 'varName', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs ${badgeColor} font-mono">
-                                    <input type="text" id="input-value-${item.id}" value="${escapeHtml(item.value || '')}" placeholder="Start Num (def: 1)" oninput="syncRuleFieldData('${item.id}', 'value', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono">
-                                    <input type="text" id="input-increment-${item.id}" value="${escapeHtml(item.increment || '')}" placeholder="Increment (def: 1)" oninput="syncRuleFieldData('${item.id}', 'increment', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono">
+                                    ${buildExprInput(`input-varname-${item.id}`, item.varName || '', 'Counter Name (Req)', `syncRuleFieldData('${item.id}', 'varName', this.value); scheduleSyntaxCheck('${item.id}')`, badgeColor)}
+                                    ${buildExprInput(`input-value-${item.id}`, item.value || '', 'Start Num (def: 1)', `syncRuleFieldData('${item.id}', 'value', this.value); scheduleSyntaxCheck('${item.id}')`, 'text-emerald-400')}
+                                    ${buildExprInput(`input-increment-${item.id}`, item.increment || '', 'Increment (def: 1)', `syncRuleFieldData('${item.id}', 'increment', this.value); scheduleSyntaxCheck('${item.id}')`, 'text-emerald-400')}
                                 </div>
                             `;
                         } else {
                             fieldsHtml = `
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    <input type="text" id="input-varname-${item.id}" value="${escapeHtml(item.varName || '')}" placeholder="${isVar?'Variable':'Constant'} Name (Req)" oninput="syncRuleFieldData('${item.id}', 'varName', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs ${badgeColor} font-mono">
-                                    <input type="text" id="input-value-${item.id}" value="${escapeHtml(item.value || '')}" placeholder="Value expression. Use {attribute[\\"name\\"]}, {var[\\"v\\"]}" oninput="syncRuleFieldData('${item.id}', 'value', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono">
+                                    ${buildExprInput(`input-varname-${item.id}`, item.varName || '', `${isVar?'Variable':'Constant'} Name (Req)`, `syncRuleFieldData('${item.id}', 'varName', this.value); scheduleSyntaxCheck('${item.id}')`, badgeColor)}
+                                    ${buildExprInput(`input-value-${item.id}`, item.value || '', 'Value expression', `syncRuleFieldData('${item.id}', 'value', this.value); scheduleSyntaxCheck('${item.id}')`, 'text-emerald-400')}
                                 </div>
                             `;
                         }
@@ -2147,7 +2700,7 @@
                             </div>
                             ${condExprHtml}
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
-                                <input type="text" id="input-xpath-${item.id}" value="${escapeHtml(item.xpath)}" placeholder="XPath Statement" oninput="syncRuleFieldData('${item.id}', 'xpath', this.value)" class="col-span-2 bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-gray-200">
+                                ${buildExprInput(`input-xpath-${item.id}`, item.xpath || '', 'XPath Statement', `syncRuleFieldData('${item.id}', 'xpath', this.value)`, 'md:col-span-2')}
                                 <select id="select-action-${item.id}" onchange="syncRuleFieldData('${item.id}', 'action', this.value); renderRulesPipelineUi();" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-gray-300 focus:outline-none">
                                     <option value="addAttr" ${item.action === 'addAttr' ? 'selected' : ''}>Add Attribute</option>
                                     <option value="removeAttr" ${item.action === 'removeAttr' ? 'selected' : ''}>Remove Attribute</option>
@@ -2159,10 +2712,10 @@
 
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 ${['addAttr', 'modifyAttr', 'removeAttr'].includes(item.action) ? 
-                                `<input type="text" id="input-attrname-${item.id}" value="${escapeHtml(item.attrName || '')}" placeholder="Attribute Name (Tokens ok)" oninput="syncRuleFieldData('${item.id}', 'attrName', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-blue-400 font-mono ${item.action === 'removeAttr' ? 'sm:col-span-2' : ''}">` : ''}
+                                buildExprInput(`input-attrname-${item.id}`, item.attrName || '', 'Attribute Name (Tokens ok)', `syncRuleFieldData('${item.id}', 'attrName', this.value); scheduleSyntaxCheck('${item.id}')`, `text-blue-400 ${item.action === 'removeAttr' ? 'sm:col-span-2' : ''}`) : ''}
                                 
                                 ${['addAttr', 'modifyAttr', 'modifyText', 'addNode'].includes(item.action) ? 
-                                `<input type="text" id="input-value-${item.id}" value="${escapeHtml(item.value || '')}" placeholder="Value expression. Use {attribute[\\"name\\"]}, {value} or {var[\\"id\\"]}" oninput="syncRuleFieldData('${item.id}', 'value', this.value); scheduleSyntaxCheck('${item.id}')" class="bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono ${['modifyText', 'addNode'].includes(item.action) ? 'sm:col-span-2' : ''}">` : ''}
+                                buildExprInput(`input-value-${item.id}`, item.value || '', 'Value expression', `syncRuleFieldData('${item.id}', 'value', this.value); scheduleSyntaxCheck('${item.id}')`, `text-emerald-400 ${['modifyText', 'addNode'].includes(item.action) ? 'sm:col-span-2' : ''}`) : ''}
                             </div>
                         `;
                     }
@@ -2172,6 +2725,7 @@
             };
 
             rulesList.forEach(item => renderItem(item, rulesList, rulesContainer, false, null));
+            setTimeout(() => document.querySelectorAll('input.expr-editor-input').forEach(el => syncHighlight(el.id)), 0);
         }
 
         // ==========================================
@@ -2183,13 +2737,17 @@
          */
         function getAttributeValue(node, inner) {
             if (!node || node.nodeType !== Node.ELEMENT_NODE) return "";
-            let isNum = /^-?\d+$/.test(inner);
-            let isQuoted = /^["'](.*?)["']$/.test(inner);
+            
+            // Fast paths to avoid regex allocations
+            if (inner.startsWith('"') && inner.endsWith('"')) {
+                return node.getAttribute(inner.slice(1, -1)) || "";
+            }
+            if (inner.startsWith("'") && inner.endsWith("'")) {
+                return node.getAttribute(inner.slice(1, -1)) || "";
+            }
 
-            if (isQuoted) {
-                let key = inner.match(/^["'](.*?)["']$/)[1];
-                return node.getAttribute(key) || "";
-            } else if (isNum) {
+            let isNum = /^-?\d+$/.test(inner);
+            if (isNum) {
                 let isNeg = inner.startsWith('-');
                 let val = Math.abs(parseInt(inner));
                 let idx = isNeg ? node.attributes.length - 1 - val : val;
@@ -2205,18 +2763,25 @@
          */
         function getChildElement(node, key, indexStr) {
             if (!node || node.nodeType !== Node.ELEMENT_NODE) return null;
-            let elementChildren = Array.from(node.children);
             
-            if (key !== null) {
-                elementChildren = elementChildren.filter(c => c.tagName === key);
+            // Linear loop directly over native child elements array avoiding full collection filters
+            let elementChildren = node.children;
+            let matchedCount = 0;
+            let matches = [];
+            
+            for (let i = 0; i < elementChildren.length; i++) {
+                let child = elementChildren[i];
+                if (key === null || child.tagName === key) {
+                    matches.push(child);
+                }
             }
             
             let isNeg = indexStr.startsWith('-');
             let val = Math.abs(parseInt(indexStr));
-            let idx = isNeg ? elementChildren.length - 1 - val : val;
+            let idx = isNeg ? matches.length - 1 - val : val;
             
-            if (idx >= 0 && idx < elementChildren.length) {
-                return elementChildren[idx];
+            if (idx >= 0 && idx < matches.length) {
+                return matches[idx];
             }
             return null;
         }
@@ -2336,7 +2901,8 @@
             } else if (action === 'modifyText') {
                 let currentTextVal = "";
                 let textNode = null;
-                for (let child of node.childNodes) {
+                for (let i = 0; i < node.childNodes.length; i++) {
+                    let child = node.childNodes[i];
                     if (child.nodeType === Node.TEXT_NODE) {
                         textNode = child;
                         currentTextVal += child.nodeValue;
@@ -2363,8 +2929,6 @@
                 while (rootEl.firstChild) {
                     const child = rootEl.firstChild;
                     const imported = node.ownerDocument.importNode(child, true);
-                    //TODO: insert before causes elements after the insertion to be marked as modified in the DOM tree, with a blue background.
-                    //Make them not appear as modified.
                     node.insertBefore(imported, node.firstChild);
                     rootEl.removeChild(child); 
                 }
@@ -2401,8 +2965,15 @@
                 const compiledVal = compileTemplate(rule.value);
 
                 const result = pipelineDoc.evaluate(rule.xpath.trim(), pipelineDoc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                
+                // PERFORMANCE FIX: Convert to static matches array first to isolate engine modifications
+                const targets = [];
                 for (let i = 0; i < result.snapshotLength; i++) {
-                    let originalMatchedNode = result.snapshotItem(i);
+                    targets.push(result.snapshotItem(i));
+                }
+
+                for (let i = 0; i < targets.length; i++) {
+                    let originalMatchedNode = targets[i];
                     let node = originalMatchedNode;
                     if (node.nodeType === Node.ATTRIBUTE_NODE) node = node.ownerElement;
                     if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
@@ -2461,9 +3032,21 @@
                             lastIfResult = null;
                             continue;
                         }
+                        
                         const mockNode = pipelineDoc.documentElement;
                         const condVal = evaluateCompiledTemplate(compileTemplate(item.conditionExpr || ""), mockNode, null, {errors:[], warnings:[]}, newScopeChain);
-                        lastIfResult = evaluateTruthiness(condVal);
+                        
+                        // FEATURE ADDITION: Groups resolve their conditions dynamically as explicit XPath structures
+                        if (item.type === 'group') {
+                            try {
+                                let res = pipelineDoc.evaluate(condVal, pipelineDoc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                                lastIfResult = res.snapshotLength > 0;
+                            } catch (e) {
+                                lastIfResult = evaluateTruthiness(condVal);
+                            }
+                        } else {
+                            lastIfResult = evaluateTruthiness(condVal);
+                        }
                         
                         if (!lastIfResult) continue; // Condition eval returned false
                     } else {
@@ -2528,8 +3111,14 @@
                             const compiledAttr = compileTemplate(item.attrName);
                             const compiledVal = compileTemplate(item.value);
 
+                            // PERFORMANCE FIX: Convert to static matches array first to isolate engine modifications
+                            const targets = [];
                             for (let i = 0; i < result.snapshotLength; i++) {
-                                let originalMatchedNode = result.snapshotItem(i);
+                                targets.push(result.snapshotItem(i));
+                            }
+
+                            for (let i = 0; i < targets.length; i++) {
+                                let originalMatchedNode = targets[i];
                                 let node = originalMatchedNode;
                                 if (node.nodeType === Node.ATTRIBUTE_NODE) node = node.ownerElement;
                                 if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
@@ -2710,8 +3299,14 @@
                     // Compare child text node segments
                     let childTextOut = "";
                     let childTextIn = "";
-                    Array.from(outNode.childNodes).forEach(c => { if(c.nodeType === Node.TEXT_NODE) childTextOut += c.nodeValue.trim(); });
-                    Array.from(matchedInNode.childNodes).forEach(c => { if(c.nodeType === Node.TEXT_NODE) childTextIn += c.nodeValue.trim(); });
+                    for (let i = 0; i < outNode.childNodes.length; i++) {
+                        let c = outNode.childNodes[i];
+                        if (c.nodeType === Node.TEXT_NODE) childTextOut += c.nodeValue.trim();
+                    }
+                    for (let i = 0; i < matchedInNode.childNodes.length; i++) {
+                        let c = matchedInNode.childNodes[i];
+                        if (c.nodeType === Node.TEXT_NODE) childTextIn += c.nodeValue.trim();
+                    }
 
                     if (hasAttributeDelta || (childTextOut !== childTextIn)) {
                         directMutatedNodes.set(outNode, 'modified');
@@ -2762,6 +3357,7 @@
 
         /**
          * Parses input/output XML, generates internal map references, and triggers UI tree draw loops.
+         * Includes a Large Document Threshold check to defer tree generation for optimal editing performance.
          * @param {string} targetWorkspace - Chosen workspace target ('input' | 'output')
          */
         function parseAndRenderTree(targetWorkspace = 'input') {
@@ -2799,6 +3395,29 @@
                 outputXmlDoc = parsedDoc;
             }
             
+            // PERFORMANCE FIX: Check node count to skip heavy recursive DOM tree building
+            const nodeCount = parsedDoc.querySelectorAll('*').length;
+            const overrideFlag = isInput ? forceRenderInputTree : forceRenderOutputTree;
+            
+            if (nodeCount > 1200 && !overrideFlag) {
+                targetContainer.innerHTML = `
+                    <div class="p-6 bg-gray-800/80 border border-amber-600/30 rounded-xl flex flex-col gap-3 items-start select-none">
+                        <span class="text-xs font-semibold uppercase tracking-wider text-amber-400">⚡ Performance Protection Gate</span>
+                        <p class="text-xs text-gray-300 leading-relaxed">
+                            This XML document is large (${nodeCount} elements). Interactive DOM Tree rendering is deferred to ensure smooth typing and transformations.
+                        </p>
+                        <button onclick="overrideLargeTreeGate('${targetWorkspace}')" class="bg-amber-600 hover:bg-amber-500 text-xs text-white font-semibold py-1.5 px-3 rounded-lg transition duration-150 shadow">
+                            Render Interactive Tree Anyway
+                        </button>
+                    </div>
+                `;
+                if (isInput) {
+                    xpathResultsContainer.innerHTML = '<div class="text-xs text-amber-400 italic">XPath querying matches will still show results below on demand.</div>';
+                    highlightLayerInput.innerHTML = escapeHtml(xmlString);
+                }
+                return;
+            }
+
             targetContainer.innerHTML = '';
             
             const { allTags } = parseHighlights(xmlString, -1);
@@ -2808,11 +3427,20 @@
             }
             
             if (isInput) {
-                highlightActiveScope();
+                scheduleHighlightActiveScope();
                 runXPathQuery();
             } else {
                 runDiffComparisonHighlighter();
             }
+        }
+
+        function overrideLargeTreeGate(targetWorkspace) {
+            if (targetWorkspace === 'input') {
+                forceRenderInputTree = true;
+            } else {
+                forceRenderOutputTree = true;
+            }
+            parseAndRenderTree(targetWorkspace);
         }
 
         /**
@@ -2978,10 +3606,11 @@
             let textContent = "";
             let hasElementChildren = false;
 
-            Array.from(node.childNodes).forEach(child => {
+            for (let i = 0; i < node.childNodes.length; i++) {
+                let child = node.childNodes[i];
                 if (child.nodeType === Node.TEXT_NODE) textContent += child.nodeValue.trim();
                 else if (child.nodeType === Node.ELEMENT_NODE) hasElementChildren = true;
-            });
+            }
 
             if (textContent && !hasElementChildren) {
                 const valSpan = document.createElement('span');
@@ -3019,10 +3648,10 @@
                 const nodePath = workspaceSource === 'input' ? generateAbsoluteXPath(node) : null;
                 let isCollapsed = workspaceSource === 'input' ? collapsedNodePaths.has(nodePath) : false;
 
-                Array.from(node.childNodes).forEach(child => {
-                    const childMarkup = buildTreeNode(child, isStaticPreview, allTags, trackingIndexRef, workspaceSource);
+                for (let i = 0; i < node.childNodes.length; i++) {
+                    const childMarkup = buildTreeNode(node.childNodes[i], isStaticPreview, allTags, trackingIndexRef, workspaceSource);
                     if (childMarkup) childrenContainer.appendChild(childMarkup);
-                });
+                }
 
                 const closeTagLine = document.createElement('div');
                 closeTagLine.className = "text-gray-500 font-bold py-0.5 tree-row select-none transition-all";
@@ -3223,14 +3852,19 @@
                 const compiledAttr = compileTemplate(attrName);
                 const compiledVal = compileTemplate(newVal);
 
+                // PERFORMANCE FIX: Copy targets to a static list first
+                const targets = [];
                 for (let i = 0; i < result.snapshotLength; i++) {
-                    let originalMatchedNode = result.snapshotItem(i);
+                    targets.push(result.snapshotItem(i));
+                }
+
+                for (let i = 0; i < targets.length; i++) {
+                    let originalMatchedNode = targets[i];
                     let node = originalMatchedNode;
                     if (node.nodeType === Node.ATTRIBUTE_NODE) node = node.ownerElement;
                     if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
                     if (node.nodeType !== Node.ELEMENT_NODE) continue;
 
-                    // Execute without a shared active contextual loop scope block mapping. 
                     applyTransformation(node, action, compiledAttr, compiledVal, originalMatchedNode, null, isolatedScopeList);
                 }
                 updateSourceFromDOM(currentXmlDoc);
@@ -3284,7 +3918,8 @@
             let activeTarget = null;
             let activeAttribute = null;
 
-            for (let tag of allTags) {
+            for (let i = 0; i < allTags.length; i++) {
+                let tag = allTags[i];
                 if (cursorPosition >= tag.start && cursorPosition <= tag.tagOpenEnd) {
                     activeTarget = tag;
                     let attrRegex = /([a-zA-Z0-9_:-]+)\s*=\s*(['"])(.*?)\2/g;
@@ -3309,9 +3944,17 @@
             let current = activeTarget;
             while (current) {
                 path.unshift(current);
-                current = allTags.find(t => t.start < current.start && t.end > current.end && !t.isSelfClosing && 
-                    (allTags.filter(parentCandidate => parentCandidate.start < current.start && parentCandidate.end > current.end && parentCandidate.start > t.start).length === 0)
-                );
+                // Simple search replacing recursive loop matching tag elements
+                let nextParent = null;
+                for (let i = 0; i < allTags.length; i++) {
+                    let t = allTags[i];
+                    if (t.start < current.start && t.end > current.end && !t.isSelfClosing) {
+                        if (!nextParent || t.start > nextParent.start) {
+                            nextParent = t;
+                        }
+                    }
+                }
+                current = nextParent;
             }
             return { path, attributeName: activeAttribute, allTags };
         }
@@ -3345,6 +3988,14 @@
             document.querySelectorAll('.highlight-ancestor').forEach(el => el.classList.remove('highlight-ancestor'));
 
             const xmlString = xmlInput.value;
+            
+            // PERFORMANCE FIX: Disable CPU-heavy character highlighting parsing during rapid movements
+            // if document size exceeds 40,000 characters
+            if (xmlString.length > 40000) {
+                highlightLayerInput.textContent = xmlString;
+                return;
+            }
+
             const cursorPosition = xmlInput.selectionStart;
             const { path, attributeName } = parseHighlights(xmlString, cursorPosition);
             updateTextareaHighlight(xmlString, path, 'input');
@@ -3398,14 +4049,17 @@
                 Array.from(node.attributes).forEach(attr => { attrs += ` ${attr.name}="${attr.value}"`; });
                 let hasXmlElements = false;
                 let textVal = "";
-                Array.from(node.childNodes).forEach(c => {
+                for (let i = 0; i < node.childNodes.length; i++) {
+                    let c = node.childNodes[i];
                     if (c.nodeType === Node.ELEMENT_NODE) hasXmlElements = true;
                     if (c.nodeType === Node.TEXT_NODE) textVal += c.nodeValue.trim();
-                });
+                }
                 if (node.childNodes.length === 0) return `${indent}<${node.tagName}${attrs} />\n`;
                 if (!hasXmlElements) return `${indent}<${node.tagName}${attrs}>${textVal}</${node.tagName}>\n`;
                 let output = `${indent}<${node.tagName}${attrs}>\n`;
-                Array.from(node.childNodes).forEach(child => { output += formatNode(child, level + 1); });
+                for (let i = 0; i < node.childNodes.length; i++) {
+                    output += formatNode(node.childNodes[i], level + 1);
+                }
                 output += `${indent}</${node.tagName}>\n`;
                 return output;
             }
@@ -3506,10 +4160,11 @@
 
                 let childText = "";
                 let hasElementChildren = false;
-                Array.from(node.childNodes).forEach(c => {
+                for (let i = 0; i < node.childNodes.length; i++) {
+                    let c = node.childNodes[i];
                     if (c.nodeType === Node.TEXT_NODE) childText += c.nodeValue.trim();
                     if (c.nodeType === Node.ELEMENT_NODE) hasElementChildren = true;
-                });
+                }
 
                 if (!hasElementChildren) {
                     textValueInputGroup.classList.remove('hidden');
