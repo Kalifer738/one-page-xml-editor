@@ -571,6 +571,20 @@
         // Global set for preserving collapsed node states across renders
         let collapsedNodePaths = new Set();
 
+        /**
+         * [July 6, 2026 - Gemini] Added helper function to extract pre-root data (like <?xml version="1.0"?>)
+         * to prevent the parser and formatter from stripping it out upon serialization because the
+         * DOM element only retains standard root children.
+         */
+        function extractPreRootContent(xmlString) {
+            const rootMatch = xmlString.match(/<[a-zA-Z0-9_:-]+/);
+            if (rootMatch) {
+                const preRoot = xmlString.substring(0, rootMatch.index).trim();
+                return preRoot ? preRoot + "\n" : "";
+            }
+            return "";
+        }
+
         // ==========================================
         // SYNTAX HIGHLIGHTING ENGINE (QoL Features)
         // ==========================================
@@ -813,7 +827,9 @@
         const TOKEN_REL_RX = /^\s*(child|ancestor)\s*(?:\[\s*(["'])([\s\S]*?)\2\s*\])?\s*\[\s*(-?\d+)\s*\]\s*(?:\(\s*([\s\S]*)\s*\))?\s*$/;
 
         /**
-         * Safely splits strings by commas while respecting nested quotes and brackets.
+         * [July 6, 2026 - Gemini] Addressed missing documentation:
+         * Safely splits strings by commas while respecting nested quotes and brackets,
+         * permitting functions like math() to parse complex internal expressions successfully.
          */
         function safeSplitComma(str) {
             let result = [];
@@ -893,7 +909,8 @@
         }
 
         /**
-         * Safely extracts modifier blocks from end of the string supporting deep nested properties
+         * [July 6, 2026 - Gemini] Safely extracts modifier blocks ([start:take]) from the 
+         * trailing end of strings supporting deep nested properties by traversing backwards.
          */
         function extractLastModifier(expr) {
             if (!expr.endsWith(']')) return null;
@@ -1627,6 +1644,7 @@
         }
 
         /**
+         * [July 6, 2026 - Gemini] Addressed missing documentation:
          * Parses and outputs colored/stylized XML strings using explicit classification loops.
          * Prevents character overlap visual rendering bugs while injecting custom highlighting classes.
          * @param {string} text - Raw, unescaped target source XML text block.
@@ -1873,12 +1891,13 @@
         }
 
         /**
+         * [July 6, 2026 - Gemini] Addressed missing documentation:
          * Evaluates modifier key combinations and routes to undo or duplication logic blocks.
          * Upgraded with Auto-close tags, Smart Enter, Comment toggling, and Line shifting.
          * @param {KeyboardEvent} e - Keydown event descriptor.
          */
         function handleEditorShortcuts(e) {
-            const isCtrl = e.ctrlKey || e.metaKey;
+            const isCtrl = e.ctrlKey || e.metaKey; // Handles standard Windows/Linux Ctrl mapping alongside macOS Command.
             const isAlt = e.altKey;
 
             // Smart Enter (Auto-Indent)
@@ -2037,6 +2056,7 @@
 
         /**
          * Duplicates targeted characters or complete current text lines.
+         * The directional parameters are preserved structurally for legacy keybindings contexts.
          */
         function duplicateText(isDirectional, isUp) {
             const val = xmlInput.value;
@@ -2877,6 +2897,7 @@
         }
 
         /**
+         * [July 6, 2026 - Gemini] Addressed missing documentation:
          * Mutates a specified DOM node based on action requests using stateful counters & tokens.
          * Resolves dynamic text slices, attribute name resolution, and XML child additions.
          */
@@ -2981,8 +3002,11 @@
 
                     applyTransformation(node, rule.action, compiledAttr, compiledVal, originalMatchedNode, rule, isolatedScopeList);
                 }
+                
+                // [July 6, 2026 - Gemini] Retrieve XML declarations manually since serializing skips document-level roots
+                const preRoot = extractPreRootContent(xmlInput.value);
                 const serializer = new XMLSerializer();
-                xmlOutput.value = serializer.serializeToString(pipelineDoc);
+                xmlOutput.value = preRoot + serializer.serializeToString(pipelineDoc);
                 formatXML('output');
                 clearError();
                 renderRulesPipelineUi();
@@ -3140,8 +3164,10 @@
             processRuleList(rulesList, []);
 
             if (processingSucceeded) {
+                // [July 6, 2026 - Gemini] Retrieve XML declarations manually since serializing skips document-level roots
+                const preRoot = extractPreRootContent(xmlInput.value);
                 const serializer = new XMLSerializer();
-                xmlOutput.value = serializer.serializeToString(pipelineDoc);
+                xmlOutput.value = preRoot + serializer.serializeToString(pipelineDoc);
                 formatXML('output');
                 clearError();
             }
@@ -3444,6 +3470,7 @@
         }
 
         /**
+         * [July 6, 2026 - Gemini] Addressed missing documentation:
          * Generates an absolute XPath expression pointing directly to a specific DOM node.
          * @param {Node} node - Target document element or attribute node.
          * @returns {string} Fully qualified unique absolute XPath expression.
@@ -3873,6 +3900,11 @@
             }
         }
 
+        /**
+         * [July 6, 2026 - Gemini] Addressed missing documentation:
+         * Extracts visual highlighting positions by traversing XML strings via regex.
+         * Determines structural element depth levels enabling cursor matching tracking loops.
+         */
         function parseHighlights(xmlString, cursorPosition) {
             const tagRegex = /<(\/)?([a-zA-Z0-9_:-]+)([^>]*?)(\/)?>/g;
             let match;
@@ -4024,8 +4056,10 @@
         }
 
         function updateSourceFromDOM(doc) {
+            // [July 6, 2026 - Gemini] Re-inject original prefix text to stop the tree-stripping behavior.
+            const preRoot = extractPreRootContent(xmlInput.value);
             const serializer = new XMLSerializer();
-            xmlInput.value = serializer.serializeToString(doc);
+            xmlInput.value = preRoot + serializer.serializeToString(doc);
             formatXML('input');
         }
 
@@ -4033,6 +4067,9 @@
             const targetTextArea = (targetWorkspace === 'input') ? xmlInput : xmlOutput;
             const xmlString = targetTextArea.value.trim();
             if(!xmlString) return;
+            
+            // [July 6, 2026 - Gemini] Extract and preserve pre-root tags (like XML declarations).
+            const preRoot = extractPreRootContent(xmlString);
             
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString(xmlString, "application/xml");
@@ -4063,7 +4100,7 @@
                 output += `${indent}</${node.tagName}>\n`;
                 return output;
             }
-            targetTextArea.value = formatNode(xmlDoc.documentElement).trim();
+            targetTextArea.value = preRoot + formatNode(xmlDoc.documentElement).trim();
             parseAndRenderTree(targetWorkspace);
         }
 
@@ -4071,6 +4108,9 @@
             const targetTextArea = (targetWorkspace === 'input') ? xmlInput : xmlOutput;
             const xmlString = targetTextArea.value.trim();
             if(!xmlString) return;
+            
+            // [July 6, 2026 - Gemini] Preserving XML declaration during minification.
+            const preRoot = extractPreRootContent(xmlString).trim();
             
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString(xmlString, "application/xml");
@@ -4080,7 +4120,7 @@
             while(walker.nextNode()) textNodes.push(walker.currentNode);
             textNodes.forEach(n => { if(!n.nodeValue.trim()) n.parentNode.removeChild(n); });
             const serializer = new XMLSerializer();
-            targetTextArea.value = serializer.serializeToString(xmlDoc).replace(/>\s*</g, '><').trim();
+            targetTextArea.value = (preRoot + "\n" + serializer.serializeToString(xmlDoc).replace(/>\s*</g, '><')).trim();
             parseAndRenderTree(targetWorkspace);
         }
 
