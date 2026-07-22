@@ -4,97 +4,71 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>COB-Viz: COBOL Flow & Coverage Visualizer</title>
-    <!-- Tailwind CSS for modern utility styling -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Inter & Fira Code Fonts from Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- Custom Style Block for specialized styles -->
     <style>
         body {
             font-family: 'Inter', sans-serif;
             background-color: #0f172a;
             color: #f1f5f9;
+            overflow: hidden; 
         }
         
-        .code-font {
-            font-family: 'Fira Code', monospace;
-        }
+        .code-font { font-family: 'Fira Code', monospace; }
 
-        /* Custom Scrollbars for slick look */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #1e293b;
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #475569;
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #64748b;
-        }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
 
-        /* Dot matrix grid styling for interactive visualizer canvas */
-        .grid-bg {
+        .interactive-canvas {
             background-image: radial-gradient(#334155 1.5px, transparent 1.5px);
-            background-size: 24px 24px;
             background-color: #0b0f19;
             cursor: grab;
+            position: relative;
+            overflow: hidden; 
         }
-        .grid-bg:active {
-            cursor: grabbing;
-        }
+        .interactive-canvas:active { cursor: grabbing; }
 
-        /* Smooth path transition styling */
-        .flow-path {
-            transition: stroke 0.2s, stroke-width 0.2s;
-        }
+        .flow-path { transition: stroke 0.2s, stroke-width 0.2s, stroke-dasharray 0.2s; }
         .flow-path:hover {
-            stroke-width: 5px !important;
-            filter: drop-shadow(0px 0px 8px currentColor);
+            stroke-width: 4px !important;
+            filter: drop-shadow(0px 0px 6px currentColor);
         }
 
-        /* Card styles while dragging */
         .dragging {
-            opacity: 0.75;
+            opacity: 0.85;
             cursor: grabbing !important;
             border-color: #38bdf8 !important;
             box-shadow: 0 25px 50px -12px rgba(56, 189, 248, 0.25) !important;
+            z-index: 50;
         }
 
-        /* Prevent text selection during drag-and-drop */
-        .no-select {
-            user-select: none;
-            -webkit-user-select: none;
-        }
+        .no-select { user-select: none; -webkit-user-select: none; }
+
+        .path-handle { transition: r 0.1s, fill 0.1s; }
+        .path-handle:hover { r: 8; fill: #fbbf24; }
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
-    <!-- Application Top Bar Header -->
-    <header class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between shrink-0">
+    <header class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between shrink-0 z-10 relative">
         <div class="flex items-center space-x-3">
-            <!-- Logo Icon (SVG) -->
             <svg class="w-8 h-8 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
             </svg>
             <div>
                 <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
-                    COB-Viz <span class="text-xs bg-cyan-500/20 text-cyan-400 font-normal px-2.5 py-0.5 rounded-full border border-cyan-500/30">Enterprise v2.0</span>
+                    COB-Viz <span class="text-xs bg-cyan-500/20 text-cyan-400 font-normal px-2.5 py-0.5 rounded-full border border-cyan-500/30">Enterprise v2.6</span>
                 </h1>
-                <p class="text-xs text-slate-400">Interactive COBOL Control Flow, Manual Coverage & Abbreviation Dictionary Mapper</p>
+                <p class="text-xs text-slate-400">Interactive COBOL Control Flow, Infinite Layout & Path Routing</p>
             </div>
         </div>
 
-        <!-- Global Navigation / Tabs & State Controls -->
         <div class="flex items-center space-x-6">
-            <!-- Tabs Menu -->
             <div class="bg-slate-950 p-1 rounded-lg border border-slate-800 flex space-x-1">
                 <button onclick="switchTab('input-tab')" id="btn-input-tab" class="px-4 py-2 text-sm font-medium rounded-md transition-all duration-150 bg-slate-800 text-white shadow-inner">
                     1. Input & Dictionary
@@ -107,45 +81,32 @@
                 </button>
             </div>
 
-            <!-- Import/Export & Reset Controls -->
             <div class="flex items-center space-x-2 border-l border-slate-800 pl-4">
                 <button onclick="saveProject()" class="bg-slate-800 hover:bg-slate-700 text-white text-xs px-3 py-2 rounded border border-slate-700 font-medium flex items-center gap-1" title="Save Workspace to Browser">
-                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
-                    Save Status
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg> Save
                 </button>
                 <button onclick="exportAsJSON()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3 py-2 rounded font-medium flex items-center gap-1" title="Export Project to JSON File">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                    Export File
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg> Export
                 </button>
                 <button onclick="triggerImport()" class="bg-slate-800 hover:bg-slate-700 text-white text-xs px-3 py-2 rounded border border-slate-700 font-medium flex items-center gap-1" title="Load Project from JSON File">
-                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0l-4 4m4-4v12"></path></svg>
-                    Import File
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0l-4 4m4-4v12"></path></svg> Import
                 </button>
                 <input type="file" id="file-import" class="hidden" accept=".json" onchange="importFromJsonFile(event)">
             </div>
         </div>
     </header>
 
-    <!-- Main Content Container with Dynamic Views -->
-    <main class="flex-1 overflow-hidden relative">
-
+    <main class="flex-1 relative overflow-hidden">
         <!-- TAB 1: INPUT AND DICTIONARY SETUP -->
-        <div id="view-input-tab" class="absolute inset-0 p-6 overflow-y-auto flex flex-col md:flex-row gap-6">
-            <!-- Left Panel: COBOL Code Parser Panel -->
-            <div class="flex-1 flex flex-col bg-slate-900 border border-slate-800 rounded-xl p-5 overflow-hidden min-h-[500px]">
+        <div id="view-input-tab" class="absolute inset-0 p-6 overflow-y-auto flex flex-col md:flex-row gap-6 bg-slate-900 z-10">
+            <div class="flex-1 flex flex-col bg-slate-900 border border-slate-800 rounded-xl p-5 overflow-hidden min-h-[500px] shadow-lg">
                 <div class="flex items-center justify-between mb-3 shrink-0">
                     <div>
                         <h2 class="text-md font-semibold text-white">COBOL Program Source</h2>
                         <p class="text-xs text-slate-400">Paste your COBOL paragraph flow here</p>
                     </div>
-                    <div class="flex items-center space-x-2">
-                        <button onclick="loadSampleProgram()" class="text-xs bg-slate-800 text-cyan-400 border border-slate-700 hover:bg-slate-700 px-3 py-1.5 rounded transition duration-150">
-                            Load Demo Code
-                        </button>
-                    </div>
+                    <button onclick="loadSampleProgram()" class="text-xs bg-slate-800 text-cyan-400 border border-slate-700 hover:bg-slate-700 px-3 py-1.5 rounded transition duration-150">Load Demo Code</button>
                 </div>
-
-                <!-- Parsing Option Filters -->
                 <div class="flex flex-wrap gap-4 items-center mb-3 bg-slate-950 p-3 rounded-lg border border-slate-800">
                     <label class="flex items-center space-x-2 text-xs text-slate-300 select-none cursor-pointer">
                         <input type="checkbox" id="chk-strip-seq" checked class="rounded border-slate-700 bg-slate-800 text-cyan-500 focus:ring-cyan-500">
@@ -156,338 +117,348 @@
                         <span>Strip Fixed Comments (Col 7 / *)</span>
                     </label>
                 </div>
-
-                <!-- Code input Area -->
-                <textarea id="cobol-code" class="flex-1 w-full bg-slate-950 text-emerald-400 border border-slate-800 rounded-lg p-4 code-font text-xs resize-none focus:outline-none focus:ring-1 focus:ring-cyan-500 mb-4 overflow-y-auto" placeholder="PROCEDURE DIVISION.&#10;A000-MAIN-PCS.&#10;    PERFORM A010-STT-SLT-ORD-INF.&#10;    GOBACK."></textarea>
-
+                <textarea id="cobol-code" class="flex-1 w-full bg-slate-950 text-emerald-400 border border-slate-800 rounded-lg p-4 code-font text-xs resize-none focus:outline-none focus:ring-1 focus:ring-cyan-500 mb-4 overflow-y-auto"></textarea>
                 <button onclick="processSourceCode()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-semibold py-3 rounded-lg transition-all duration-150 shadow-lg shrink-0 flex justify-center items-center gap-2 text-sm">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.7 15.3a6 6 0 111.4-1.4l4.9 4.9-1.4 1.4-4.9-4.9zM10 14a4 4 0 100-8 4 4 0 000 8z"></path></svg>
                     Parse Code & Re-Generate Flow Graph
                 </button>
             </div>
 
-            <!-- Right Panel: Dictionary Manager Panel -->
-            <div class="w-full md:w-96 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col shrink-0 overflow-hidden">
+            <div class="w-full md:w-96 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col shrink-0 overflow-hidden shadow-lg">
                 <div class="mb-3 shrink-0">
                     <h2 class="text-md font-semibold text-white">Abbreviation Dictionary</h2>
-                    <p class="text-xs text-slate-400">Map paragraph codes to user friendly terms (Comma-separated values)</p>
+                    <p class="text-xs text-slate-400">Map paragraph codes to user friendly terms</p>
                 </div>
-
-                <!-- Custom Dictionary Adder Form -->
                 <div class="space-y-2 mb-4 p-3 bg-slate-950 rounded-lg border border-slate-800 shrink-0">
                     <div class="flex items-center justify-between mb-2 pb-2 border-b border-slate-800">
-                        <span class="text-xs text-slate-400 font-medium">Add mapping manually or bulk import:</span>
-                        <button onclick="document.getElementById('dict-file-import').click()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] px-2 py-1 rounded flex items-center gap-1 transition">
-                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0l-4 4m4-4v12"></path></svg> Bulk Import TXT
-                        </button>
+                        <span class="text-xs text-slate-400 font-medium">Bulk import:</span>
+                        <button onclick="document.getElementById('dict-file-import').click()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] px-2 py-1 rounded flex items-center gap-1 transition">Bulk Import TXT</button>
                         <input type="file" id="dict-file-import" class="hidden" accept=".txt" onchange="importDictionaryFile(event)">
                     </div>
                     <div class="grid grid-cols-3 gap-2">
                         <input type="text" id="dict-key" class="bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white uppercase focus:outline-none focus:ring-1 focus:ring-cyan-500 col-span-1" placeholder="PCS">
                         <input type="text" id="dict-value" class="bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 col-span-2" placeholder="PROCESS, PROCESSING">
                     </div>
-                    <button onclick="addDictionaryEntry()" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white py-1.5 text-xs rounded transition duration-150 font-medium">
-                        + Add Mapping Word
-                    </button>
+                    <button onclick="addDictionaryEntry()" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white py-1.5 text-xs rounded transition duration-150 font-medium">+ Add Mapping Word</button>
                 </div>
-
-                <!-- Current Dictionary List Container -->
                 <div class="flex-1 overflow-y-auto pr-1">
                     <table class="w-full text-left text-xs">
-                        <thead>
-                            <tr class="text-slate-400 border-b border-slate-800">
-                                <th class="pb-2 font-medium">Abbr.</th>
-                                <th class="pb-2 font-medium">Possible Expanded Values</th>
-                                <th class="pb-2 font-medium text-right">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="dictionary-list-tbody" class="divide-y divide-slate-800">
-                            <!-- Populated Dynamically by script -->
-                        </tbody>
+                        <thead><tr class="text-slate-400 border-b border-slate-800"><th class="pb-2 font-medium">Abbr.</th><th class="pb-2 font-medium">Expanded Values</th><th class="pb-2 font-medium text-right">Action</th></tr></thead>
+                        <tbody id="dictionary-list-tbody" class="divide-y divide-slate-800"></tbody>
                     </table>
                 </div>
             </div>
         </div>
 
-        <!-- TAB 2: INTERACTIVE VISUALIZER WORKSPACE -->
-        <div id="view-visualizer-tab" class="hidden absolute inset-0 flex overflow-hidden">
-            <!-- Left Sidebar Controls -->
-            <div class="w-64 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 overflow-y-auto p-4 space-y-4">
+        <!-- TAB 2: VISUALIZER -->
+        <div id="view-visualizer-tab" class="hidden absolute inset-0 flex bg-slate-950 z-10">
+            <!-- Sidebar -->
+            <div class="w-72 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 overflow-y-auto p-4 space-y-4 shadow-xl z-20 relative">
                 <div>
                     <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Workspace Controls</h3>
-                    
-                    <!-- Toggle Abbreviated vs Full Name Mode -->
                     <div class="space-y-3 bg-slate-950 p-3 rounded-lg border border-slate-800">
                         <div>
                             <span class="text-xs text-slate-400 block mb-2">Paragraph Title Display:</span>
                             <div class="flex bg-slate-900 p-1 rounded-md border border-slate-800">
-                                <button onclick="setResolvedMode(false)" id="btn-abbr-view" class="flex-1 text-center py-1.5 text-xs font-medium rounded transition duration-150 bg-cyan-600 text-white">
-                                    Abbreviated
-                                </button>
-                                <button onclick="setResolvedMode(true)" id="btn-resolved-view" class="flex-1 text-center py-1.5 text-xs font-medium rounded transition duration-150 text-slate-400 hover:text-white">
-                                    Resolved
-                                </button>
+                                <button onclick="setResolvedMode(false)" id="btn-abbr-view" class="flex-1 text-center py-1.5 text-xs font-medium rounded transition duration-150 bg-cyan-600 text-white">Abbreviated</button>
+                                <button onclick="setResolvedMode(true)" id="btn-resolved-view" class="flex-1 text-center py-1.5 text-xs font-medium rounded transition duration-150 text-slate-400 hover:text-white">Resolved</button>
                             </div>
                         </div>
-
-                        <!-- Auto Layout Trigger -->
                         <button onclick="applyAutoLayout()" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white text-xs font-medium py-2 rounded flex items-center justify-center gap-1.5 transition duration-150">
                             <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
-                            Auto Layout Nodes
+                            Expand Auto Layout
+                        </button>
+                        <button onclick="toggleForceLayout()" id="btn-force-layout" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white text-xs font-medium py-2 rounded flex items-center justify-center gap-1.5 transition duration-150">
+                            <svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                            Toggle Force Layout
                         </button>
                     </div>
                 </div>
 
-                <!-- Zooming Tools Panel -->
                 <div>
                     <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Visual Scale</h3>
                     <div class="flex items-center space-x-1.5 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
                         <button onclick="changeZoom(-0.1)" class="w-8 h-8 flex items-center justify-center bg-slate-900 border border-slate-800 rounded hover:bg-slate-800 font-bold text-slate-300">-</button>
                         <span id="zoom-value" class="flex-1 text-center font-mono text-xs text-white">100%</span>
                         <button onclick="changeZoom(0.1)" class="w-8 h-8 flex items-center justify-center bg-slate-900 border border-slate-800 rounded hover:bg-slate-800 font-bold text-slate-300">+</button>
-                        <button onclick="resetZoom()" class="px-2 py-1 bg-slate-900 border border-slate-800 rounded hover:bg-slate-800 text-xs text-slate-400">Reset</button>
+                        <button onclick="resetZoomAndPan()" class="px-2 py-1 bg-slate-900 border border-slate-800 rounded hover:bg-slate-800 text-xs text-slate-400">Reset</button>
                     </div>
                 </div>
 
-                <!-- Interactive Legend -->
                 <div class="mt-auto pt-2">
                     <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Visual Flow Legend</h3>
                     <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2.5 text-xs text-slate-300">
-                        <div class="flex items-center space-x-2">
-                            <span class="inline-block w-4 h-1 bg-emerald-500 rounded"></span>
-                            <span>Tested Branch / Call</span>
-                        </div>
-                        <div class="flex items-center space-x-2">
-                            <span class="inline-block w-4 h-1 bg-rose-500 rounded"></span>
-                            <span>Untested Branch / Call</span>
-                        </div>
-                        <div class="text-[11px] text-slate-400 pt-1 leading-relaxed border-t border-slate-850">
-                            <strong>Interactive:</strong> Click lines/branches to toggle status. Drag paragraph headers to organize. <br>
-                            <strong>Line routing:</strong> Click & drag empty space to pan. Drag line paths to route around cards. Right-click path nodes to delete routing handles.
-                        </div>
+                        <div class="flex items-center space-x-2"><span class="w-4 h-1 bg-emerald-500 rounded"></span><span>Tested Branch</span></div>
+                        <div class="flex items-center space-x-2"><span class="w-4 h-1 bg-rose-500 rounded"></span><span>Untested Branch</span></div>
+                        <div class="flex items-center space-x-2"><span class="w-4 h-1 bg-amber-500 rounded border-t border-dashed border-amber-300"></span><span>Iteration / Loop Flow</span></div>
                     </div>
                 </div>
 
-                <!-- Live Coverage Panel -->
+                <!-- Coverage Panel -->
                 <div class="bg-slate-950 border border-slate-800 p-3 rounded-lg">
-                    <div class="text-xs text-slate-400 mb-1">Global Testing Progress:</div>
-                    <div class="flex items-center justify-between font-mono text-xs text-white font-bold mb-1.5">
-                        <span id="tested-count">0/0</span>
-                        <span id="tested-percentage">0%</span>
-                    </div>
-                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                        <div id="tested-progress-bar" class="bg-cyan-500 h-full transition-all duration-300" style="width: 0%"></div>
-                    </div>
+                    <div class="text-xs text-slate-400 mb-1">Testing Progress:</div>
+                    <div class="flex items-center justify-between font-mono text-xs text-white font-bold mb-1.5"><span id="tested-count">0/0</span><span id="tested-percentage">0%</span></div>
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div id="tested-progress-bar" class="bg-cyan-500 h-full transition-all duration-300" style="width: 0%"></div></div>
                 </div>
             </div>
 
-            <!-- Visual Graph Workspace Container -->
-            <div class="flex-1 overflow-auto bg-slate-950 grid-bg relative" id="canvas-container">
-                <!-- Outer Workspace Container -->
-                <div id="visual-workspace" class="relative w-[4000px] h-[3000px] origin-top-left transition-transform duration-75">
-                    
-                    <!-- SVG Overlay layer for connection lines -->
-                    <svg id="svg-overlay" class="absolute inset-0 pointer-events-none w-full h-full">
-                        <!-- Markers definition for flow arrows -->
+            <!-- Canvas Area -->
+            <div class="flex-1 interactive-canvas relative" id="canvas-container">
+                <div id="visual-workspace" style="position: absolute; top: 0; left: 0; width: 0; height: 0; overflow: visible; transform-origin: 0 0;">
+                    <svg id="svg-overlay" style="position: absolute; top: 0; left: 0; overflow: visible; pointer-events: none; z-index: 10;">
                         <defs>
-                            <marker id="arrow-untested" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                            <marker id="arrow-untested" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                                 <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444" />
                             </marker>
-                            <marker id="arrow-tested" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                            <marker id="arrow-tested" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                                 <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981" />
                             </marker>
+                            <marker id="arrow-loop" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                                <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b" />
+                            </marker>
                         </defs>
-                        <!-- Dynamic SVG paths drawn in render() -->
                         <g id="svg-connections-group"></g>
                     </svg>
-
-                    <!-- Absolutely positioned paragraph cards container -->
-                    <div id="nodes-container" class="absolute inset-0"></div>
-
+                    <div id="nodes-container" style="position: absolute; top: 0; left: 0; z-index: 20;"></div>
                 </div>
             </div>
         </div>
 
-        <!-- TAB 3: SUMMARY COVERAGE REPORT -->
-        <div id="view-report-tab" class="hidden absolute inset-0 p-6 overflow-y-auto">
+        <!-- TAB 3: REPORT -->
+        <div id="view-report-tab" class="hidden absolute inset-0 p-6 overflow-y-auto bg-slate-900 z-10">
             <div class="max-w-5xl mx-auto bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-2xl space-y-6">
-                <!-- Header of Report -->
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-6 border-b border-slate-800">
+                <div class="flex justify-between items-center pb-6 border-b border-slate-800">
                     <div>
                         <h2 class="text-xl font-bold text-white">COBOL Program Coverage Summary</h2>
-                        <p class="text-xs text-slate-400">Consolidated list of paragraph testing status, abbreviations and developer comments.</p>
+                        <p class="text-xs text-slate-400">Consolidated list of paragraph testing status.</p>
                     </div>
-                    <button onclick="window.print()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-4 py-2 rounded font-medium flex items-center gap-1.5 transition">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
-                        Print Summary Report
-                    </button>
+                    <button onclick="window.print()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-4 py-2 rounded font-medium flex items-center gap-1.5 transition">Print Summary Report</button>
                 </div>
-
-                <!-- Stats summary block -->
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div class="bg-slate-950 border border-slate-850 p-4 rounded-lg">
-                        <div class="text-slate-400 text-xs">Total Paragraphs</div>
-                        <div id="report-total-paragraphs" class="text-2xl font-bold font-mono text-white mt-1">0</div>
-                    </div>
-                    <div class="bg-slate-950 border border-slate-850 p-4 rounded-lg">
-                        <div class="text-slate-400 text-xs">Total Branches Checked</div>
-                        <div id="report-total-branches" class="text-2xl font-bold font-mono text-white mt-1">0</div>
-                    </div>
-                    <div class="bg-slate-950 border border-slate-850 p-4 rounded-lg">
-                        <div class="text-slate-400 text-xs">Tested Paths</div>
-                        <div id="report-tested-branches" class="text-2xl font-bold font-mono text-emerald-400 mt-1">0</div>
-                    </div>
-                    <div class="bg-slate-950 border border-slate-850 p-4 rounded-lg">
-                        <div class="text-slate-400 text-xs">Calculated Coverage</div>
-                        <div id="report-percentage" class="text-2xl font-bold font-mono text-cyan-400 mt-1">0%</div>
-                    </div>
+                <div class="grid grid-cols-4 gap-4">
+                    <div class="bg-slate-950 border border-slate-850 p-4 rounded-lg"><div class="text-slate-400 text-xs">Paragraphs</div><div id="report-total-paragraphs" class="text-2xl font-bold font-mono text-white mt-1">0</div></div>
+                    <div class="bg-slate-950 border border-slate-850 p-4 rounded-lg"><div class="text-slate-400 text-xs">Total Branches</div><div id="report-total-branches" class="text-2xl font-bold font-mono text-white mt-1">0</div></div>
+                    <div class="bg-slate-950 border border-slate-850 p-4 rounded-lg"><div class="text-slate-400 text-xs">Tested Paths</div><div id="report-tested-branches" class="text-2xl font-bold font-mono text-emerald-400 mt-1">0</div></div>
+                    <div class="bg-slate-950 border border-slate-850 p-4 rounded-lg"><div class="text-slate-400 text-xs">Coverage</div><div id="report-percentage" class="text-2xl font-bold font-mono text-cyan-400 mt-1">0%</div></div>
                 </div>
-
-                <!-- Detailed Breakdown Table -->
-                <div class="overflow-x-auto border border-slate-800 rounded-lg">
-                    <table class="w-full text-left border-collapse text-xs">
-                        <thead>
-                            <tr class="bg-slate-950 text-slate-300 font-semibold border-b border-slate-800">
-                                <th class="p-3">Paragraph Node (Abbr. & Full Mapped Name)</th>
-                                <th class="p-3">Tested Branches Coverage</th>
-                                <th class="p-3">Paragraph & Flow Notes</th>
-                            </tr>
-                        </thead>
-                        <tbody id="report-tbody" class="divide-y divide-slate-800 text-slate-300">
-                            <!-- Dynamic Content -->
-                        </tbody>
-                    </table>
-                </div>
+                <table class="w-full text-left border-collapse text-xs border border-slate-800 rounded-lg">
+                    <thead><tr class="bg-slate-950 text-slate-300 font-semibold border-b border-slate-800"><th class="p-3">Paragraph Node</th><th class="p-3">Tested Branches</th><th class="p-3">Notes</th></tr></thead>
+                    <tbody id="report-tbody" class="divide-y divide-slate-800 text-slate-300"></tbody>
+                </table>
             </div>
         </div>
-
     </main>
 
-    <!-- Global Alert / Custom Toast Overlay (No native alerts allowed) -->
-    <div id="custom-toast" class="fixed bottom-5 right-5 z-50 bg-slate-900 border border-slate-800 text-white rounded-lg p-4 shadow-2xl flex items-center gap-3 transform translate-y-20 opacity-0 transition-all duration-350 pointer-events-none">
-        <div id="toast-icon-box" class="w-8 h-8 rounded-full flex items-center justify-center bg-cyan-500/20 text-cyan-400">
-            <!-- Icon Dynamic -->
-        </div>
+    <!-- Notification Toast Element -->
+    <div id="custom-toast" class="fixed bottom-5 right-5 z-50 bg-slate-900 border border-slate-800 text-white rounded-lg p-4 shadow-2xl flex items-center gap-3 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+        <div id="toast-icon-box" class="w-8 h-8 rounded-full flex items-center justify-center bg-cyan-500/20 text-cyan-400"></div>
         <div>
-            <div id="toast-title" class="font-bold text-sm">Status Update</div>
+            <div id="toast-title" class="font-bold text-sm">Status</div>
             <div id="toast-message" class="text-xs text-slate-400">Action performed.</div>
         </div>
     </div>
 
-    <!-- JS Logic Core -->
     <script>
-        // Global Application State Object
         let appState = {
             rawCode: "",
             dictionary: {
-                "PCS": ["PROCESS", "PROCESSING", "PIECES"],
-                "STT": ["START", "STATE", "STATUS"],
-                "SLT": ["SELECT", "SLOT", "SOLUTION"],
-                "ORD": ["ORDER", "ORDINARY"],
-                "INF": ["INFORMATION", "INFERENCE"],
-                "EVAL": ["EVALUATE", "EVALUATION"],
-                "RCD": ["RECORD", "RECORDING", "RECODE"],
-                "TYP": ["TYPE", "TYPING"],
-                "PRF": ["PERFORM", "PREFIX"],
-                "UNT": ["UNTIL", "UNIT"],
-                "EOF": ["END-OF-FILE", "EOF-MARKER"],
-                "ERR": ["ERROR", "ERRANT"]
+                "PCS": ["PROCESS", "PROCESSING", "PIECES"], "STT": ["START", "STATE", "STATUS"],
+                "SLT": ["SELECT", "SLOT", "SOLUTION"], "ORD": ["ORDER", "ORDINARY"],
+                "INF": ["INFORMATION", "INFERENCE"], "EVAL": ["EVALUATE", "EVALUATION"],
+                "RCD": ["RECORD", "RECORDING", "RECODE"], "TYP": ["TYPE", "TYPING"],
+                "PRF": ["PERFORM", "PREFIX"], "UNT": ["UNTIL", "UNIT"],
+                "EOF": ["END-OF-FILE", "EOF-MARKER"], "ERR": ["ERROR", "ERRANT"]
             },
-            resolutions: {},       // Selected resolutions: { "ParagraphName": { "STT": "START" } }
-            paragraphs: [],        // Parsed paragraph nodes and control branches
-            comments: {},          // Paragraph-level manual user comments
-            controlComments: {},   // Individual branch manual user comments
-            nodePositions: {},     // 2D placement of nodes: { "ParagraphName": {x: 100, y: 150} }
-            coverage: {},          // Coverage states: { "branchId": true/false }
-            lineControlPoints: {}, // Manual 2D routing coordinate lists of lines: { "connectionKey": [{x,y}, ...] }
-            showResolved: false,   // Current global node-header title mode
-            stripSequence: true,   // Clear 1-6 columns
-            stripComments: true,   // Remove * lines
-            zoomLevel: 1.0         // Scale factor for interactive canvas
+            resolutions: {},       
+            paragraphs: [],        
+            comments: {},          
+            controlComments: {},   
+            nodePositions: {},     
+            coverage: {},          
+            lineControlPoints: {},
+            connectionOffsets: {}, 
+            showResolved: false,   
+            stripSequence: true,   
+            stripComments: true,   
+            forceLayoutActive: false,
+            pan: { x: 0, y: 0 },
+            zoomLevel: 1.0         
         };
 
-        // Workspace Drag & Route Globals
         let isPanning = false;
         let panStartX = 0, panStartY = 0;
-        let panStartScrollLeft = 0, panStartScrollTop = 0;
         let isDraggingCP = false;
         let activeCPDrag = null;
+        let forceAnimFrame = null;
 
-        // Window Init: Run on start
         window.onload = function() {
             loadFromLocalStorage();
-            if (!appState.rawCode) {
-                loadSampleProgram();
-            } else {
-                updateUIFromState();
-            }
+            if (!appState.rawCode) loadSampleProgram();
+            else updateUIFromState();
             
-            // Set up Global Canvas listeners for line drawing and window resize
-            window.addEventListener('resize', drawFlowlines);
-            const container = document.getElementById('canvas-container');
-            if (container) {
-                container.addEventListener('scroll', drawFlowlines);
-                
-                // Clicking workspace empty background triggers panning mechanics
-                container.addEventListener('mousedown', function(e) {
-                    if (e.button !== 0) return; // Left clicks only
-                    
-                    const isBg = e.target.id === 'canvas-container' || 
-                                 e.target.id === 'visual-workspace' || 
-                                 e.target.id === 'svg-overlay' ||
-                                 e.target.tagName === 'svg';
-                                 
-                    if (isBg) {
-                        isPanning = true;
-                        panStartX = e.clientX;
-                        panStartY = e.clientY;
-                        panStartScrollLeft = container.scrollLeft;
-                        panStartScrollTop = container.scrollTop;
-                        container.style.cursor = 'grabbing';
-                        e.preventDefault(); // Prevent text highlights
-                    }
-                });
-            }
+            setupInfiniteCanvas();
+        };
 
-            // Universal mouse handlers for dragging handles and workspace pan offsets
+        function setupInfiniteCanvas() {
+            const container = document.getElementById('canvas-container');
+            if (!container) return;
+            
+            // Re-apply saved transform
+            updateCanvasTransform();
+            
+            // Window resize forces redraw to prevent line clipping
+            window.addEventListener('resize', drawFlowlines);
+            
+            // Zooming Mechanics (Mouse Wheel)
+            container.addEventListener('wheel', function(e) {
+                e.preventDefault();
+                const zoomFactor = 1.08;
+                const direction = e.deltaY < 0 ? 1 : -1;
+                let newZoom = direction > 0 ? appState.zoomLevel * zoomFactor : appState.zoomLevel / zoomFactor;
+                
+                // Boundaries
+                newZoom = Math.max(0.2, Math.min(newZoom, 3.0));
+                
+                // Zoom towards mouse cursor dynamically
+                const rect = container.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+
+                appState.pan.x = mouseX - (mouseX - appState.pan.x) * (newZoom / appState.zoomLevel);
+                appState.pan.y = mouseY - (mouseY - appState.pan.y) * (newZoom / appState.zoomLevel);
+                appState.zoomLevel = newZoom;
+
+                updateCanvasTransform();
+                drawFlowlines();
+            }, { passive: false });
+
+            // Panning Mechanics (Click & Drag Empty Space)
+            container.addEventListener('mousedown', function(e) {
+                if (e.button !== 0) return; // Left clicks only
+                
+                // Only pan if clicking on background grids or svg path overlays
+                const targetId = e.target.id;
+                const isBg = targetId === 'canvas-container' || targetId === 'visual-workspace' || targetId === 'svg-overlay' || e.target.tagName === 'svg';
+                             
+                if (isBg) {
+                    isPanning = true;
+                    panStartX = e.clientX - appState.pan.x;
+                    panStartY = e.clientY - appState.pan.y;
+                    container.style.cursor = 'grabbing';
+                    e.preventDefault(); // Prevent text highlight
+                }
+            });
+
+            // Universal mouse handlers for Panning and Control Point routing
             window.addEventListener('mousemove', function(e) {
-                if (isPanning && container) {
-                    const dx = e.clientX - panStartX;
-                    const dy = e.clientY - panStartY;
-                    container.scrollLeft = panStartScrollLeft - dx;
-                    container.scrollTop = panStartScrollTop - dy;
+                if (isPanning) {
+                    appState.pan.x = e.clientX - panStartX;
+                    appState.pan.y = e.clientY - panStartY;
+                    updateCanvasTransform();
                 }
                 
                 if (isDraggingCP && activeCPDrag) {
-                    const workspace = document.getElementById('visual-workspace');
-                    if (workspace) {
-                        const rect = workspace.getBoundingClientRect();
-                        const mouseX = (e.clientX - rect.left) / appState.zoomLevel;
-                        const mouseY = (e.clientY - rect.top) / appState.zoomLevel;
-                        
-                        if (!appState.lineControlPoints[activeCPDrag.connectionKey]) {
-                            appState.lineControlPoints[activeCPDrag.connectionKey] = [];
-                        }
+                    const rect = container.getBoundingClientRect();
+                    // Map screen coordinate perfectly back into inner workspace coordinate
+                    const mouseX = (e.clientX - rect.left - appState.pan.x) / appState.zoomLevel;
+                    const mouseY = (e.clientY - rect.top - appState.pan.y) / appState.zoomLevel;
+                    
+                    if (activeCPDrag.type === 'mid') {
+                        if (!appState.lineControlPoints[activeCPDrag.connectionKey]) appState.lineControlPoints[activeCPDrag.connectionKey] = [];
+
                         appState.lineControlPoints[activeCPDrag.connectionKey][activeCPDrag.index] = { x: mouseX, y: mouseY };
-                        drawFlowlines();
+                    } else {
+                        if (!appState.connectionOffsets) appState.connectionOffsets = {};
+                        if (!appState.connectionOffsets[activeCPDrag.connectionKey]) appState.connectionOffsets[activeCPDrag.connectionKey] = {};
+                        const targetNode = activeCPDrag.type === 'start' ? activeCPDrag.srcNode : activeCPDrag.targetNode;
+                        const nodePos = appState.nodePositions[targetNode];
+                        appState.connectionOffsets[activeCPDrag.connectionKey][activeCPDrag.type] = { dx: mouseX - nodePos.x, dy: mouseY - nodePos.y };
                     }
+                    
+                    drawFlowlines();
                 }
             });
 
             window.addEventListener('mouseup', function() {
-                if (isPanning && container) {
+                if (isPanning) {
                     isPanning = false;
                     container.style.cursor = 'grab';
+                    saveToLocalStorage(); // Save pan state
                 }
                 if (isDraggingCP) {
+                    if (activeCPDrag && (activeCPDrag.type === 'start' || activeCPDrag.type === 'end')) {
+                        snapToCardEdge(activeCPDrag);
+                    }
                     isDraggingCP = false;
                     activeCPDrag = null;
                     saveToLocalStorage();
+                    drawFlowlines();
                 }
             });
-        };
+        }
 
-        // Switch application tab views smoothly
+        function snapToCardEdge(dragInfo) {
+            const key = dragInfo.connectionKey;
+            const isStart = dragInfo.type === 'start';
+            const nodeName = isStart ? dragInfo.srcNode : dragInfo.targetNode;
+            
+            const cardPos = appState.nodePositions[nodeName];
+            const cardEl = document.getElementById(`card-${nodeName}`);
+            if (!cardPos || !cardEl || !appState.connectionOffsets[key]) return;
+            
+            const w = cardEl.offsetWidth;
+            const h = cardEl.offsetHeight;
+            let offset = appState.connectionOffsets[key][dragInfo.type];
+            let ptX = cardPos.x + offset.dx;
+            let ptY = cardPos.y + offset.dy;
+            
+            const left = cardPos.x;
+            const right = cardPos.x + w;
+            const top = cardPos.y;
+            const bottom = cardPos.y + h;
+            
+            let snappedX = ptX, snappedY = ptY;
+            
+            if (ptX < left) snappedX = left;
+            else if (ptX > right) snappedX = right;
+            if (ptY < top) snappedY = top;
+            else if (ptY > bottom) snappedY = bottom;
+            
+            // If it's completely inside, push it to the nearest boundary.
+            if (ptX >= left && ptX <= right && ptY >= top && ptY <= bottom) {
+                const dLeft = ptX - left, dRight = right - ptX, dTop = ptY - top, dBottom = bottom - ptY;
+                const minDist = Math.min(dLeft, dRight, dTop, dBottom);
+                if (minDist === dLeft) snappedX = left;
+                else if (minDist === dRight) snappedX = right;
+                else if (minDist === dTop) snappedY = top;
+                else snappedY = bottom;
+            }
+            
+            appState.connectionOffsets[key][dragInfo.type] = { dx: snappedX - cardPos.x, dy: snappedY - cardPos.y };
+        }
+
+        function updateCanvasTransform() {
+            const ws = document.getElementById('visual-workspace');
+            const bg = document.getElementById('canvas-container');
+            if (ws && bg) {
+                ws.style.transform = `translate(${appState.pan.x}px, ${appState.pan.y}px) scale(${appState.zoomLevel})`;
+                bg.style.backgroundPosition = `${appState.pan.x}px ${appState.pan.y}px`;
+                bg.style.backgroundSize = `${24 * appState.zoomLevel}px ${24 * appState.zoomLevel}px`;
+                document.getElementById('zoom-value').innerText = `${Math.round(appState.zoomLevel * 100)}%`;
+            }
+        }
+
+        function changeZoom(factor) {
+            appState.zoomLevel = Math.max(0.2, Math.min(appState.zoomLevel + factor, 3.0));
+            updateCanvasTransform();
+            drawFlowlines();
+        }
+
+        function resetZoomAndPan() {
+            appState.zoomLevel = 1.0;
+            appState.pan = { x: 0, y: 0 };
+            updateCanvasTransform();
+            drawFlowlines();
+        }
+
         function switchTab(tabId) {
             const tabs = ['input-tab', 'visualizer-tab', 'report-tab'];
             tabs.forEach(t => {
@@ -503,25 +474,15 @@
                 }
             });
 
-            if (tabId === 'visualizer-tab') {
-                // Force canvas redrawing once visible to get exact coordinates
-                setTimeout(() => {
-                    drawFlowlines();
-                }, 50);
-            } else if (tabId === 'report-tab') {
-                buildCoverageReport();
-            }
+            if (tabId === 'visualizer-tab') setTimeout(() => drawFlowlines(), 50);
+            else if (tabId === 'report-tab') buildCoverageReport();
         }
 
-        // Display highly polished notifications (Since alert() is banned)
         function showNotification(title, message, type = 'success') {
             const toast = document.getElementById('custom-toast');
             const iconBox = document.getElementById('toast-icon-box');
-            const toastTitle = document.getElementById('toast-title');
-            const toastMsg = document.getElementById('toast-message');
-
-            toastTitle.innerText = title;
-            toastMsg.innerText = message;
+            document.getElementById('toast-title').innerText = title;
+            document.getElementById('toast-message').innerText = message;
 
             if (type === 'success') {
                 iconBox.innerHTML = `<svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
@@ -533,481 +494,218 @@
 
             toast.classList.remove('translate-y-20', 'opacity-0', 'pointer-events-none');
             toast.classList.add('translate-y-0', 'opacity-100');
-
             setTimeout(() => {
                 toast.classList.add('translate-y-20', 'opacity-0', 'pointer-events-none');
                 toast.classList.remove('translate-y-0', 'opacity-100');
             }, 3000);
         }
 
-        // Load Dictionary entries inside the DOM
-        function renderDictionary() {
-            const tbody = document.getElementById('dictionary-list-tbody');
-            tbody.innerHTML = '';
+        function parseCOBOLCode(code, stripSeq, stripComments) {
+        const lines = code.split('\n');
+        let processedLines = [];
 
-            Object.keys(appState.dictionary).sort().forEach(key => {
-                const tr = document.createElement('tr');
-                tr.className = "border-b border-slate-800 hover:bg-slate-850/50";
-                
-                const keyTd = document.createElement('td');
-                keyTd.className = "py-2.5 font-semibold text-slate-200 code-font uppercase";
-                keyTd.innerText = key;
-
-                const valTd = document.createElement('td');
-                valTd.className = "py-2.5 text-slate-400 text-xs";
-                valTd.innerText = appState.dictionary[key].join(', ');
-
-                const actTd = document.createElement('td');
-                actTd.className = "py-2.5 text-right";
-                actTd.innerHTML = `
-                    <button onclick="removeDictionaryEntry('${key}')" class="text-rose-400 hover:text-rose-300 transition" title="Delete mapping">
-                        <svg class="w-4 h-4 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                    </button>
-                `;
-
-                tr.appendChild(keyTd);
-                tr.appendChild(valTd);
-                tr.appendChild(actTd);
-                tbody.appendChild(tr);
-            });
+        for (let line of lines) {
+            let processed = line;
+            if (stripSeq && processed.length >= 6) processed = processed.substring(6);
+            if (stripComments) {
+                let commentChar = stripSeq ? line.charAt(6) : line.charAt(0);
+                if (commentChar === '*' || commentChar === '/') continue;
+            }
+            if (stripSeq && processed.length > 66) processed = processed.substring(0, 66);
+            let inlineIdx = processed.indexOf('*>');
+            if (inlineIdx !== -1) processed = processed.substring(0, inlineIdx);
+            processedLines.push(processed);
         }
 
-        // Add a new mapped word abbreviation to dictionary
-        function addDictionaryEntry() {
-            const keyInput = document.getElementById('dict-key');
-            const valInput = document.getElementById('dict-value');
+        let paragraphs = [];
+        let currentParagraph = null;
+        const paragraphRegex = /^\s*([A-Za-z0-9_-]+)\s*\.\s*$/i;
+        const sectionRegex = /^\s*([A-Za-z0-9_-]+)\s+SECTION\s*\.\s*$/i;
+        const systemIgnore = [
+            "EXIT", "STOP", "RUN", "GOBACK", "WORKING-STORAGE", "LINKAGE", 
+            "FILE", "LOCAL-STORAGE", "INPUT-OUTPUT", "CONFIGURATION",
+            "DATA", "ENVIRONMENT", "PROCEDURE", "IDENTIFICATION",
+            "END-IF", "END-EVALUATE", "END-PERFORM", "END-READ", "END-WRITE", 
+            "END-ADD", "END-SUBTRACT", "END-MULTIPLY", "END-DIVIDE", "END-COMPUTE", 
+            "END-SEARCH", "END-RETURN", "END-CALL", "ELSE", "WHEN"
+        ];
 
-            const key = keyInput.value.trim().toUpperCase();
-            const val = valInput.value.trim();
+        for (let i = 0; i < processedLines.length; i++) {
+            let text = processedLines[i].trim();
+            if (!text) continue;
+            if (text.toUpperCase().includes("DIVISION.")) continue;
 
-            if (!key || !val) {
-                showNotification("Invalid Entry", "Both abbreviation code and values are required.", "warn");
-                return;
-            }
+            let matchPara = text.match(paragraphRegex);
+            let matchSec = text.match(sectionRegex);
+            let paraName = matchSec ? matchSec[1] : (matchPara ? matchPara[1] : null);
 
-            // Parse values by splitting on comma
-            const vals = val.split(',').map(v => v.trim().toUpperCase()).filter(v => v.length > 0);
-            
-            appState.dictionary[key] = vals;
-            renderDictionary();
-            saveToLocalStorage();
+            if (paraName && systemIgnore.includes(paraName.toUpperCase())) paraName = null;
+            if (paraName && paraName.toUpperCase().endsWith("DIVISION")) paraName = null;
 
-            keyInput.value = '';
-            valInput.value = '';
-            showNotification("Dictionary Updated", `Saved abbreviation mapping for ${key}.`);
-            
-            // Re-render visualizer to reflect potential new dropdown options
-            if (appState.paragraphs.length > 0) {
-                renderVisualizerWorkspace();
+            if (paraName) {
+                if (currentParagraph) paragraphs.push(currentParagraph);
+                currentParagraph = { name: paraName, lines: [], controls: [] };
+            } else if (currentParagraph) {
+                currentParagraph.lines.push(processedLines[i]);
             }
         }
+        if (currentParagraph) paragraphs.push(currentParagraph);
 
-        // Bulk import words to dictionary from TXT (Format: Word <spaces> Abbr)
-        function importDictionaryFile(event) {
-            const file = event.target.files[0];
-            if (!file) return;
+        const tokenRegex = /(IF\b)|(ELSE\b)|(END-IF\b)|(EVALUATE\b)|(WHEN\b[^.\n]*)|(END-EVALUATE\b)|(END-PERFORM\b)|(PERFORM\b\s+[A-Za-z0-9_-]+(?:(?:\s+UNTIL|\s+VARYING|\s+TIMES|\s+\d+)[^.\n]*)?)|(PERFORM\b[^.\n]*)|(\.)/gi;
 
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const text = e.target.result;
-                const lines = text.split('\n');
-                let added = 0;
+        paragraphs.forEach(para => {
+            let text = para.lines.join('\n').replace(/"[^"]*"|'[^']*'/g, '""');
+            let counter = 0;
+            let tree = [];
+            let stack = [ { targetList: tree, type: 'ROOT' } ];
 
-                lines.forEach(line => {
-                    const cleanLine = line.trim();
-                    if (!cleanLine) return;
-                    
-                    // Regex matching: preceding words then spaces then abbreviation
-                    const parts = cleanLine.split(/\s+/);
-                    if (parts.length >= 2) {
-                        const abbr = parts.pop().toUpperCase();
-                        const word = parts.join(' ').toUpperCase();
-                        
-                        if (!appState.dictionary[abbr]) {
-                            appState.dictionary[abbr] = [];
-                        }
-                        if (!appState.dictionary[abbr].includes(word)) {
-                            appState.dictionary[abbr].push(word);
-                            added++;
-                        }
+            let match;
+            while ((match = tokenRegex.exec(text)) !== null) {
+                let token = match[0];
+                let upper = token.toUpperCase();
+
+                if (upper.startsWith('IF')) {
+                    let c = { id: `${para.name}-ctrl-${counter++}`, type: 'IF_ELSE', text: 'IF Decision', branches: [{name:'IF True',controls:[]}, {name:'ELSE',controls:[]}], tested: [false,false] };
+                    stack[stack.length-1].targetList.push(c);
+                    stack.push({ targetList: c.branches[0].controls, type: 'IF', ref: c });
+                } else if (upper.startsWith('ELSE')) {
+                    let idx = stack.length - 1;
+                    while(idx >= 0 && stack[idx].type !== 'IF') idx--;
+                    if (idx >= 0) {
+                        stack.length = idx + 1;
+                        stack[stack.length-1].targetList = stack[stack.length-1].ref.branches[1].controls;
                     }
-                });
+                } else if (upper.startsWith('END-IF')) {
+                    let idx = stack.length - 1;
+                    while(idx >= 0 && stack[idx].type !== 'IF') idx--;
+                    if (idx >= 0) stack.length = idx;
+                } else if (upper.startsWith('EVALUATE')) {
+                    let c = { id: `${para.name}-ctrl-${counter++}`, type: 'EVALUATE', text: 'EVALUATE Block', branches: [], tested: [] };
+                    stack[stack.length-1].targetList.push(c);
+                    stack.push({ targetList: [], type: 'EVALUATE', ref: c });
+                } else if (upper.startsWith('WHEN')) {
+                    let idx = stack.length - 1;
+                    while(idx >= 0 && stack[idx].type !== 'EVALUATE') idx--;
+                    if (idx >= 0) {
+                        stack.length = idx + 1;
+                        let ref = stack[stack.length-1].ref;
+                        let bIdx = ref.branches.length;
+                        ref.branches.push({ name: token.trim(), controls: [] });
+                        ref.tested.push(false);
+                        stack[stack.length-1].targetList = ref.branches[bIdx].controls;
+                    }
+                } else if (upper.startsWith('END-EVALUATE')) {
+                    let idx = stack.length - 1;
+                    while(idx >= 0 && stack[idx].type !== 'EVALUATE') idx--;
+                    if (idx >= 0) stack.length = idx;
+                } else if (upper.startsWith('END-PERFORM')) {
+                    let idx = stack.length - 1;
+                    while(idx >= 0 && stack[idx].type !== 'PERFORM_INLINE') idx--;
+                    if (idx >= 0) stack.length = idx;
+                } else if (upper.startsWith('PERFORM')) {
+                    // Check if it calls a specific target paragraph vs an inline block (e.g., PERFORM UNTIL ...)
+                    let tgtMatch = token.match(/PERFORM\s+([A-Za-z0-9_-]+)/i);
+                    let reservedKeywords = ['UNTIL', 'VARYING', 'WITH', 'TEST', 'TIMES'];
+                    let hasNamedTarget = tgtMatch && !reservedKeywords.includes(tgtMatch[1].toUpperCase());
 
-                renderDictionary();
-                saveToLocalStorage();
-                document.getElementById('dict-file-import').value = ''; // Reset input
-                showNotification("Bulk Import Success", `Added ${added} new mapping relations.`);
-                if (appState.paragraphs.length > 0) renderVisualizerWorkspace();
-            };
-            reader.readAsText(file);
-        }
-
-        // Remove an entry from abbreviation dictionary
-        function removeDictionaryEntry(key) {
-            delete appState.dictionary[key];
-            renderDictionary();
-            saveToLocalStorage();
-            showNotification("Entry Removed", `Removed ${key} from dictionary.`);
-            
-            if (appState.paragraphs.length > 0) {
-                renderVisualizerWorkspace();
+                    if (hasNamedTarget) {
+                        let isLoop = upper.includes('UNTIL') || upper.includes('VARYING') || upper.includes('TIMES');
+                        let c = { id: `${para.name}-ctrl-${counter++}`, type: isLoop ? 'PERFORM_LOOP' : 'PERFORM', target: tgtMatch[1], text: token.trim(), tested: false };
+                        stack[stack.length-1].targetList.push(c);
+                    } else {
+                        // Inline PERFORM block containing nested statements
+                        let c = { id: `${para.name}-ctrl-${counter++}`, type: 'PERFORM_LOOP', text: token.trim(), controls: [], tested: false };
+                        stack[stack.length-1].targetList.push(c);
+                        stack.push({ targetList: c.controls, type: 'PERFORM_INLINE', ref: c });
+                    }
+                } else if (token === '.') {
+                    stack = [stack[0]];
+                }
             }
-        }
+            para.controls = tree;
+        });
 
-        // Helper to recursively iterate over hierarchical flow control AST 
+        return paragraphs;
+    }
+
         function forEachControl(controls, callback) {
             controls.forEach(c => {
                 callback(c);
                 if (c.type === 'IF_ELSE' || c.type === 'EVALUATE') {
-                    c.branches.forEach(b => {
-                        forEachControl(b.controls, callback);
-                    });
+                    c.branches.forEach(b => forEachControl(b.controls, callback));
+                } else if (c.type === 'INLINE_PERFORM') {
+                    forEachControl(c.controls, callback);
                 }
             });
         }
 
-        // Jump to specific paragraph definition code in Tab 1
-        function jumpToCode(paraName) {
-            switchTab('input-tab');
-            const ta = document.getElementById('cobol-code');
-            const text = ta.value;
-            // Seek paragraph definition, optionally ignoring margin sequences
-            const regex = new RegExp(`^\\s*(?:[0-9A-Za-z]{6}\\s+)?${paraName}\\s*\\.`, 'im');
-            const match = text.match(regex);
-            
-            if (match) {
-                ta.focus();
-                ta.setSelectionRange(match.index, match.index + match[0].length);
-                const linesToMatch = text.substr(0, match.index).split('\n').length;
-                ta.scrollTop = Math.max(0, (linesToMatch - 2) * 16); // Scroll to line approx
-                showNotification("Code Located", `Scrolled to definition of ${paraName}`, "success");
-            } else {
-                showNotification("Not Found", "Could not locate definition in raw source.", "warn");
-            }
-        }
-
-        // Core Parsing Routine: Converts raw code into Paragraph structures & branches
-        function parseCOBOLCode(code, stripSeq, stripComments) {
-            const lines = code.split('\n');
-            let processedLines = [];
-
-            for (let line of lines) {
-                let processed = line;
-
-                // Strip fixed standard COBOL sequence numbers (Columns 1-6)
-                if (stripSeq && processed.length >= 6) {
-                    processed = processed.substring(6);
-                }
-
-                // Strip fixed standard COBOL Comments (Asterisk in Col 7)
-                if (stripComments) {
-                    let commentChar = stripSeq ? line.charAt(6) : line.charAt(0);
-                    if (commentChar === '*' || commentChar === '/') {
-                        continue;
-                    }
-                }
-
-                // Strip trailing sequence area (past col 72)
-                if (stripSeq && processed.length > 66) {
-                    processed = processed.substring(0, 66);
-                }
-
-                // Clean inline comments using double dash or asterisks
-                let inlineCommentIdx = processed.indexOf('*>');
-                if (inlineCommentIdx !== -1) {
-                    processed = processed.substring(0, inlineCommentIdx);
-                }
-
-                processedLines.push(processed);
-            }
-
-            let paragraphs = [];
-            let currentParagraph = null;
-
-            // Regex for paragraphs and sections
-            // Match any line that has an identifier followed by a dot, with no other code on that line
-            const paragraphRegex = /^\s*([A-Za-z0-9_-]+)\s*\.\s*$/i;
-            const sectionRegex = /^\s*([A-Za-z0-9_-]+)\s+SECTION\s*\.\s*$/i;
-
-            for (let i = 0; i < processedLines.length; i++) {
-                let lineText = processedLines[i].trim();
-                if (!lineText) continue;
-
-                let matchPara = lineText.match(paragraphRegex);
-                let matchSec = lineText.match(sectionRegex);
-                let paraName = null;
-
-                if (matchSec) paraName = matchSec[1];
-                else if (matchPara) paraName = matchPara[1];
-
-                // Exclude system/common COBOL control command flow words ending in dot
-                const systemIgnore = ["EXIT", "STOP", "RUN", "GOBACK"];
-                if (paraName && systemIgnore.includes(paraName.toUpperCase())) {
-                    paraName = null;
-                }
-
-                if (paraName) {
-                    if (currentParagraph) {
-                        paragraphs.push(currentParagraph);
-                    }
-                    currentParagraph = {
-                        name: paraName,
-                        lines: [],
-                        controls: []
-                    };
-                } else {
-                    if (currentParagraph) {
-                        currentParagraph.lines.push(processedLines[i]);
-                    }
-                }
-            }
-
-            if (currentParagraph) {
-                paragraphs.push(currentParagraph);
-            }
-
-            // Tokenizer regex matching branching elements sequentially to support nesting scopes
-            const tokenRegex = /(IF\b)|(ELSE\b)|(END-IF\b)|(EVALUATE\b)|(WHEN\b[^.\n]*)|(END-EVALUATE\b)|(PERFORM\b\s+[A-Za-z0-9_-]+(?:(?:\s+UNTIL|\s+VARYING)[^.\n]*)?)|(\.)/gi;
-
-            // Extract control branch flows within each paragraph using Stack-based tree parsing
-            paragraphs.forEach(para => {
-                let paragraphText = para.lines.join('\n');
-                let controlCounter = 0;
-                
-                let controlsTree = [];
-                let stack = [ { targetList: controlsTree, type: 'ROOT' } ];
-
-                let match;
-                while ((match = tokenRegex.exec(paragraphText)) !== null) {
-                    let token = match[0];
-                    let upperToken = token.toUpperCase();
-
-                    if (upperToken.startsWith('IF')) {
-                        let c = {
-                            id: `${para.name}-ctrl-${controlCounter++}`,
-                            type: 'IF_ELSE',
-                            text: 'IF Decision',
-                            branches: [
-                                { name: 'IF True', controls: [] },
-                                { name: 'ELSE', controls: [] }
-                            ],
-                            tested: [false, false]
-                        };
-                        stack[stack.length-1].targetList.push(c);
-                        stack.push({ targetList: c.branches[0].controls, type: 'IF', ref: c });
-                    } 
-                    else if (upperToken.startsWith('ELSE')) {
-                        let idx = stack.length - 1;
-                        while(idx >= 0 && stack[idx].type !== 'IF') idx--;
-                        if (idx >= 0) {
-                            stack.length = idx + 1; // pop nested blocks inside IF True
-                            stack[stack.length-1].targetList = stack[stack.length-1].ref.branches[1].controls;
-                        }
-                    } 
-                    else if (upperToken.startsWith('END-IF')) {
-                        let idx = stack.length - 1;
-                        while(idx >= 0 && stack[idx].type !== 'IF') idx--;
-                        if (idx >= 0) stack.length = idx; // Close IF block
-                    } 
-                    else if (upperToken.startsWith('EVALUATE')) {
-                        let c = {
-                            id: `${para.name}-ctrl-${controlCounter++}`,
-                            type: 'EVALUATE',
-                            text: 'EVALUATE Block',
-                            branches: [],
-                            tested: []
-                        };
-                        stack[stack.length-1].targetList.push(c);
-                        stack.push({ targetList: [], type: 'EVALUATE', ref: c });
-                    } 
-                    else if (upperToken.startsWith('WHEN')) {
-                        let idx = stack.length - 1;
-                        while(idx >= 0 && stack[idx].type !== 'EVALUATE') idx--;
-                        if (idx >= 0) {
-                            stack.length = idx + 1;
-                            let ref = stack[stack.length-1].ref;
-                            let bIdx = ref.branches.length;
-                            ref.branches.push({ name: token.trim(), controls: [] });
-                            ref.tested.push(false);
-                            stack[stack.length-1].targetList = ref.branches[bIdx].controls;
-                        }
-                    } 
-                    else if (upperToken.startsWith('END-EVALUATE')) {
-                        let idx = stack.length - 1;
-                        while(idx >= 0 && stack[idx].type !== 'EVALUATE') idx--;
-                        if (idx >= 0) stack.length = idx;
-                    } 
-                    else if (upperToken.startsWith('PERFORM')) {
-                        let targetMatch = token.match(/PERFORM\s+([A-Za-z0-9_-]+)/i);
-                        if (targetMatch) {
-                            let isLoop = upperToken.includes('UNTIL') || upperToken.includes('VARYING');
-                            let c = {
-                                id: `${para.name}-ctrl-${controlCounter++}`,
-                                type: isLoop ? 'PERFORM_LOOP' : 'PERFORM',
-                                target: targetMatch[1],
-                                text: token.trim(),
-                                tested: false
-                            };
-                            stack[stack.length-1].targetList.push(c);
-                        }
-                    } 
-                    else if (token === '.') {
-                        // Sentence terminator closes all conditionally open scopes in standard COBOL back to root
-                        stack = [stack[0]];
-                    }
-                }
-                
-                para.controls = controlsTree;
-            });
-
-            return paragraphs;
-        }
-
-        // Action when pressing "Parse & Re-Generate Graph"
         function processSourceCode() {
             const code = document.getElementById('cobol-code').value;
             const stripSeq = document.getElementById('chk-strip-seq').checked;
             const stripComments = document.getElementById('chk-strip-comments').checked;
 
-            if (!code.trim()) {
-                showNotification("No Code Found", "Please paste or load a demo COBOL program.", "warn");
-                return;
-            }
+            if (!code.trim()) return showNotification("No Code", "Paste COBOL program.", "warn");
 
             appState.rawCode = code;
             appState.stripSequence = stripSeq;
             appState.stripComments = stripComments;
 
-            // Generate parsed syntax items
             const parsedParas = parseCOBOLCode(code, stripSeq, stripComments);
-            if (parsedParas.length === 0) {
-                showNotification("Parsing Issue", "No paragraph divisions or SECTION declarations found.", "warn");
-                return;
-            }
+            if (parsedParas.length === 0) return showNotification("Issue", "No paragraphs found.", "warn");
 
-            // Sync with existing coverage states to prevent losing edits when changing minor structure
             parsedParas.forEach(p => {
-                // Initialize default paragraph manual mapping
-                if (!appState.resolutions[p.name]) {
-                    appState.resolutions[p.name] = {};
-                }
-
+                if (!appState.resolutions[p.name]) appState.resolutions[p.name] = {};
                 forEachControl(p.controls, c => {
-                    // Restore branch coverage recursively
                     if (c.type === 'IF_ELSE' || c.type === 'EVALUATE') {
-                        c.tested.forEach((val, idx) => {
-                            const key = `${c.id}_branch_${idx}`;
-                            if (appState.coverage[key] !== undefined) {
-                                c.tested[idx] = appState.coverage[key];
-                            } else {
-                                appState.coverage[key] = false;
-                            }
-                        });
-                    } else {
-                        // Direct performers
-                        if (appState.coverage[c.id] !== undefined) {
-                            c.tested = appState.coverage[c.id];
-                        } else {
-                            appState.coverage[c.id] = false;
-                        }
-                    }
+                        c.tested.forEach((val, idx) => { c.tested[idx] = appState.coverage[`${c.id}_branch_${idx}`] || false; });
+                    } else c.tested = appState.coverage[c.id] || false;
                 });
             });
 
             appState.paragraphs = parsedParas;
+            let needsLayout = false;
+            appState.paragraphs.forEach(p => { if (!appState.nodePositions[p.name]) needsLayout = true; });
 
-            // Initialize default coordinates for paragraphs if empty
-            appState.paragraphs.forEach((p, idx) => {
-                if (!appState.nodePositions[p.name]) {
-                    // Spread cleanly inside canvas grid dynamically initially
-                    appState.nodePositions[p.name] = {
-                        x: 50 + (idx % 3) * 380,
-                        y: 80 + Math.floor(idx / 3) * 320
-                    };
-                }
-            });
-
-            saveToLocalStorage();
-            updateUIFromState();
-            showNotification("Parse Successful", `Parsed ${parsedParas.length} paragraphs successfully! View them on Step 2.`);
+            if (needsLayout) applyAutoLayout();
+            else { saveToLocalStorage(); updateUIFromState(); }
+            
+            showNotification("Parse Successful", `Parsed ${parsedParas.length} paragraphs.`);
             switchTab('visualizer-tab');
         }
 
-        // Applies a logical DAG layout based on control PERFORM directions (Left to Right)
         function applyAutoLayout() {
+            if (appState.forceLayoutActive) toggleForceLayout();
             if (appState.paragraphs.length === 0) return;
 
-            let deps = {};
-            let inDegree = {};
-
-            appState.paragraphs.forEach(p => {
-                deps[p.name] = [];
-                inDegree[p.name] = 0;
-            });
-
-            // Connect dependencies
+            let deps = {}, inDegree = {};
+            appState.paragraphs.forEach(p => { deps[p.name] = []; inDegree[p.name] = 0; });
             appState.paragraphs.forEach(p => {
                 forEachControl(p.controls, c => {
-                    if (c.target && deps[p.name]) {
-                        // Ensure we target a valid paragraph node
-                        let targetExists = appState.paragraphs.some(tp => tp.name === c.target);
-                        if (targetExists && !deps[p.name].includes(c.target)) {
-                            deps[p.name].push(c.target);
-                        }
+                    if (c.target && deps[p.name] && appState.paragraphs.some(tp => tp.name === c.target) && !deps[p.name].includes(c.target)) {
+                        deps[p.name].push(c.target);
                     }
                 });
             });
 
-            // Calculate degrees
-            Object.keys(deps).forEach(src => {
-                deps[src].forEach(dest => {
-                    if (inDegree[dest] !== undefined) {
-                        inDegree[dest]++;
-                    }
-                });
-            });
+            Object.keys(deps).forEach(src => { deps[src].forEach(dest => { if (inDegree[dest] !== undefined) inDegree[dest]++; }); });
 
-            // Assign structural grid levels (Columns)
-            let levels = {};
-            let queue = [];
-
-            // Seed levels with root elements (0 in-degree)
-            Object.keys(inDegree).forEach(name => {
-                if (inDegree[name] === 0) {
-                    levels[name] = 0;
-                    queue.push(name);
-                }
-            });
-
-            // Fail-safe seed if there is cyclic flow
-            if (queue.length === 0 && appState.paragraphs.length > 0) {
-                let first = appState.paragraphs[0].name;
-                levels[first] = 0;
-                queue.push(first);
-            }
+            let levels = {}, queue = [];
+            Object.keys(inDegree).forEach(name => { if (inDegree[name] === 0) { levels[name] = 0; queue.push(name); } });
+            if (queue.length === 0) queue.push(appState.paragraphs[0].name);
+            levels[queue[0]] = 0;
 
             while (queue.length > 0) {
-                let curr = queue.shift();
-                let currLvl = levels[curr] || 0;
-
+                let curr = queue.shift(), currLvl = levels[curr] || 0;
                 if (deps[curr]) {
                     deps[curr].forEach(dest => {
                         if (levels[dest] === undefined || levels[dest] < currLvl + 1) {
-                            levels[dest] = currLvl + 1;
-                            queue.push(dest);
+                            levels[dest] = currLvl + 1; queue.push(dest);
                         }
                     });
                 }
             }
+            appState.paragraphs.forEach(p => { if (levels[p.name] === undefined) levels[p.name] = 0; });
 
-            // Assign defaults to unlinked paragraphs
-            appState.paragraphs.forEach(p => {
-                if (levels[p.name] === undefined) {
-                    levels[p.name] = 0;
-                }
-            });
-
-            // Build structural dynamic layout columns
             let columns = {};
             appState.paragraphs.forEach(p => {
                 let lvl = levels[p.name];
@@ -1015,204 +713,92 @@
                 columns[lvl].push(p.name);
             });
 
-            // Apply 2D absolute positions to graph nodes
-            const widthPerCol = 420;
-            const heightPerRow = 340;
-            const originX = 60;
-            const originY = 80;
+            const colWidth = 550, rowHeight = 400, startOffsetX = 100;
+            let maxColSize = 0;
+            Object.values(columns).forEach(col => maxColSize = Math.max(maxColSize, col.length));
+            const totalHeight = maxColSize * rowHeight;
 
-            Object.keys(columns).forEach(colIdx => {
-                let level = parseInt(colIdx);
-                let list = columns[level];
-                list.forEach((name, rowIdx) => {
-                    appState.nodePositions[name] = {
-                        x: originX + level * widthPerCol,
-                        y: originY + rowIdx * heightPerRow
-                    };
-                });
+            Object.keys(columns).forEach(lvlStr => {
+                let lvl = parseInt(lvlStr), list = columns[lvl];
+                let startY = (totalHeight - list.length * rowHeight) / 2 + 100;
+                list.forEach((name, i) => { appState.nodePositions[name] = { x: startOffsetX + (lvl * colWidth), y: startY + (i * rowHeight) }; });
             });
 
             saveToLocalStorage();
             renderVisualizerWorkspace();
-            showNotification("Layout Complete", "Arranged paragraph flow automatically.");
+            appState.pan = {x: 50, y: 50};
+            updateCanvasTransform();
         }
 
-        // Translates paragraph name into user mappings based on active manual picks
-        function resolveParagraphName(paraName) {
-            const tokens = paraName.split('-');
-            const resolvedTokens = tokens.map(token => {
-                const upperToken = token.toUpperCase();
-                
-                // Check if user has explicitly chosen a manual resolution option for this token
-                if (appState.resolutions[paraName] && appState.resolutions[paraName][upperToken]) {
-                    return appState.resolutions[paraName][upperToken];
-                }
-
-                // If not manually mapped yet but exists in global dictionary, auto-assign first mapping option
-                if (appState.dictionary[upperToken] && appState.dictionary[upperToken].length > 0) {
-                    return appState.dictionary[upperToken][0];
-                }
-
-                // Fallback to original token string
-                return token;
-            });
-
-            return resolvedTokens.join('-');
+        function getEdgeDirection(px, py, cardX, cardY, cardW, cardH) {
+            const dx = px - (cardX + cardW/2);
+            const dy = py - (cardY + cardH/2);
+            const nx = dx / (cardW/2);
+            const ny = dy / (cardH/2);
+            if (Math.abs(nx) > Math.abs(ny)) return nx > 0 ? 'right' : 'left';
+            return ny > 0 ? 'bottom' : 'top';
         }
+        
+        const getOffsetCP = (x, y, dir, dist) => {
+            if (dir === 'right') return { x: x + dist, y: y };
+            if (dir === 'left') return { x: x - dist, y: y };
+            if (dir === 'bottom') return { x: x, y: y + dist };
+            if (dir === 'top') return { x: x, y: y - dist };
+            return { x, y };
+        };
 
-        // Handle user picker change on paragraph card header tokens
-        function handleManualTokenResolution(paraName, token, selectedValue) {
-            if (!appState.resolutions[paraName]) {
-                appState.resolutions[paraName] = {};
-            }
-            appState.resolutions[paraName][token] = selectedValue;
-            saveToLocalStorage();
-            
-            // Re-render visualizer layout to refresh header text
-            renderVisualizerWorkspace();
-        }
-
-        // Toggle Abbreviation Title mode (Full expanded vs RAW)
-        function setResolvedMode(isResolved) {
-            appState.showResolved = isResolved;
-            const btnAbbr = document.getElementById('btn-abbr-view');
-            const btnRes = document.getElementById('btn-resolved-view');
-
-            if (isResolved) {
-                btnRes.className = "flex-1 text-center py-1.5 text-xs font-medium rounded transition duration-150 bg-cyan-600 text-white";
-                btnAbbr.className = "flex-1 text-center py-1.5 text-xs font-medium rounded transition duration-150 text-slate-400 hover:text-white";
-            } else {
-                btnAbbr.className = "flex-1 text-center py-1.5 text-xs font-medium rounded transition duration-150 bg-cyan-600 text-white";
-                btnRes.className = "flex-1 text-center py-1.5 text-xs font-medium rounded transition duration-150 text-slate-400 hover:text-white";
-            }
-
-            renderVisualizerWorkspace();
-            saveToLocalStorage();
-        }
-
-        // Interactive card dragging controller logic
-        function makeNodeDraggable(element, paraName) {
-            let offsetXX = 0, offsetYY = 0, mouseXX = 0, mouseYY = 0;
-
-            const header = element.querySelector('.card-drag-handle');
-            if (header) {
-                header.onmousedown = dragMouseDown;
-                header.ontouchstart = dragTouchStart;
-            } else {
-                element.onmousedown = dragMouseDown;
-                element.ontouchstart = dragTouchStart;
-            }
-
-            function dragMouseDown(e) {
-                // Prevent starting canvas empty space pan when grabbing card
-                e.stopPropagation();
-                
-                // Allow interactions inside input options/menus inside headers
-                if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION' || e.target.tagName === 'BUTTON' || e.target.closest('button')) {
-                    return;
-                }
-                
-                e.preventDefault();
-                mouseXX = e.clientX;
-                mouseYY = e.clientY;
-                document.onmouseup = closeDragElement;
-                document.onmousemove = elementDrag;
-                element.classList.add('dragging');
-            }
-
-            function dragTouchStart(e) {
-                e.stopPropagation();
-                if (e.touches.length === 1) {
-                    mouseXX = e.touches[0].clientX;
-                    mouseYY = e.touches[0].clientY;
-                    document.ontouchend = closeDragElement;
-                    document.ontouchmove = elementTouchDrag;
-                    element.classList.add('dragging');
-                }
-            }
-
-            function elementDrag(e) {
-                e.preventDefault();
-                offsetXX = mouseXX - e.clientX;
-                offsetYY = mouseYY - e.clientY;
-                mouseXX = e.clientX;
-                mouseYY = e.clientY;
-
-                // Adjust for dynamic workspace scale (zoom)
-                const currentX = element.offsetLeft - (offsetXX / appState.zoomLevel);
-                const currentY = element.offsetTop - (offsetYY / appState.zoomLevel);
-
-                // Set boundaries to stay in canvas
-                const boundedX = Math.max(0, Math.min(3600, currentX));
-                const boundedY = Math.max(0, Math.min(2600, currentY));
-
-                element.style.left = boundedX + "px";
-                element.style.top = boundedY + "px";
-
-                appState.nodePositions[paraName] = { x: boundedX, y: boundedY };
-                drawFlowlines();
-            }
-
-            function elementTouchDrag(e) {
-                if (e.touches.length === 1) {
-                    const clientX = e.touches[0].clientX;
-                    const clientY = e.touches[0].clientY;
-                    offsetXX = mouseXX - clientX;
-                    offsetYY = mouseYY - clientY;
-                    mouseXX = clientX;
-                    mouseYY = clientY;
-
-                    const currentX = element.offsetLeft - (offsetXX / appState.zoomLevel);
-                    const currentY = element.offsetTop - (offsetYY / appState.zoomLevel);
-
-                    const boundedX = Math.max(0, Math.min(3600, currentX));
-                    const boundedY = Math.max(0, Math.min(2600, currentY));
-
-                    element.style.left = boundedX + "px";
-                    element.style.top = boundedY + "px";
-
-                    appState.nodePositions[paraName] = { x: boundedX, y: boundedY };
-                    drawFlowlines();
-                }
-            }
-
-            function closeDragElement() {
-                document.onmouseup = null;
-                document.onmousemove = null;
-                document.ontouchend = null;
-                document.ontouchmove = null;
-                element.classList.remove('dragging');
-                saveToLocalStorage();
-            }
-        }
-
-        // Mathematically locates the closest line segment for inserting a new control point
         function getDistanceToSegment(px, py, x1, y1, x2, y2) {
-            const dx = x2 - x1;
-            const dy = y2 - y1;
-            if (dx === 0 && dy === 0) {
-                return Math.hypot(px - x1, py - y1);
-            }
-            const t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy);
-            const clampedT = Math.max(0, Math.min(1, t));
-            const projX = x1 + clampedT * dx;
-            const projY = y1 + clampedT * dy;
-            return Math.hypot(px - projX, py - projY);
+            const dx = x2 - x1, dy = y2 - y1;
+            if (dx === 0 && dy === 0) return Math.hypot(px - x1, py - y1);
+            const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)));
+            return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
         }
 
-        // Draws precise flow lines from source performs to target paragraphs
+        function clampToPerimeter(ptX, ptY, left, top, right, bottom) {
+            if (ptX >= left && ptX <= right && ptY >= top && ptY <= bottom) {
+                const dLeft = ptX - left, dRight = right - ptX;
+                const dTop = ptY - top, dBottom = bottom - ptY;
+                const minDist = Math.min(dLeft, dRight, dTop, dBottom);
+                if (minDist === dLeft) return { x: left, y: ptY };
+                if (minDist === dRight) return { x: right, y: ptY };
+                if (minDist === dTop) return { x: ptX, y: top };
+                return { x: ptX, y: bottom };
+            }
+            return { x: ptX, y: ptY };
+        }
+
+        function getCurvePath(points, startDir, endDir) {
+            if (points.length < 2) return '';
+            let d = `M ${points[0].x} ${points[0].y}`;
+            for (let i = 0; i < points.length - 1; i++) {
+                let p0 = i > 0 ? points[i - 1] : points[0];
+                let p1 = points[i];
+                let p2 = points[i + 1];
+                let p3 = i !== points.length - 2 ? points[i + 2] : p2;
+                
+                if (i === 0 && startDir) p0 = getOffsetCP(p1.x, p1.y, startDir, -60);
+                if (i === points.length - 2 && endDir) p3 = getOffsetCP(p2.x, p2.y, endDir, -60);
+                
+                let cp1x = p1.x + (p2.x - p0.x) / 6;
+                let cp1y = p1.y + (p2.y - p0.y) / 6;
+                let cp2x = p2.x - (p3.x - p1.x) / 6;
+                let cp2y = p2.y - (p3.y - p1.y) / 6;
+                
+                d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+            }
+            return d;
+        }
+
         function drawFlowlines() {
             const svgGroup = document.getElementById('svg-connections-group');
             if (!svgGroup) return;
-
             svgGroup.innerHTML = '';
 
-            const workspace = document.getElementById('visual-workspace');
-            const workspaceRect = workspace.getBoundingClientRect();
-
             appState.paragraphs.forEach(para => {
+                const srcCard = document.getElementById(`card-${para.name}`);
+                if (!srcCard) return;
+
                 forEachControl(para.controls, ctrl => {
-                    // Check if control link targets another valid paragraph
                     if (ctrl.target) {
                         const targetPara = appState.paragraphs.find(p => p.name === ctrl.target);
                         if (targetPara) {
@@ -1220,60 +806,73 @@
                             const targetCard = document.getElementById(`card-${targetPara.name}`);
 
                             if (sourceRow && targetCard) {
-                                const srcRect = sourceRow.getBoundingClientRect();
-                                const destRect = targetCard.getBoundingClientRect();
-
-                                // Calculate positions normalized against workspace container and zoom level
-                                const x1 = (srcRect.right - workspaceRect.left) / appState.zoomLevel;
-                                const y1 = ((srcRect.top + srcRect.bottom) / 2 - workspaceRect.top) / appState.zoomLevel;
-                                const x2 = (destRect.left - workspaceRect.left) / appState.zoomLevel;
-                                const y2 = ((destRect.top + destRect.bottom) / 2 - workspaceRect.top) / appState.zoomLevel;
-
+                                const srcCardX = appState.nodePositions[para.name].x;
+                                const srcCardY = appState.nodePositions[para.name].y;
+                                const targetCardX = appState.nodePositions[targetPara.name].x;
+                                const targetCardY = appState.nodePositions[targetPara.name].y;
                                 const connectionKey = `${ctrl.id}_to_${targetPara.name}`;
+
+                                let x1 = srcCardX + srcCard.offsetWidth;
+                                let y1 = srcCardY + sourceRow.offsetTop + (sourceRow.offsetHeight / 2);
+                                
+                                let x2 = targetCardX + (targetCard.offsetWidth / 2);
+                                let y2 = targetCardY; 
+                                
+                                if (srcCardY > targetCardY + targetCard.offsetHeight) {
+                                    y2 = targetCardY + targetCard.offsetHeight;
+                                }
+                                
+                                if (appState.connectionOffsets && appState.connectionOffsets[connectionKey]) {
+                                    let off = appState.connectionOffsets[connectionKey];
+                                    if (off.start) { x1 = srcCardX + off.start.dx; y1 = srcCardY + off.start.dy; }
+                                    if (off.end) { x2 = targetCardX + off.end.dx; y2 = targetCardY + off.end.dy; }
+                                }
+                                
+                                const c1 = clampToPerimeter(x1, y1, srcCardX, srcCardY, srcCardX + srcCard.offsetWidth, srcCardY + srcCard.offsetHeight);
+                                x1 = c1.x; y1 = c1.y;
+                                
+                                const c2 = clampToPerimeter(x2, y2, targetCardX, targetCardY, targetCardX + targetCard.offsetWidth, targetCardY + targetCard.offsetHeight);
+                                x2 = c2.x; y2 = c2.y;
+                                
+                                const dir1 = getEdgeDirection(x1, y1, srcCardX, srcCardY, srcCard.offsetWidth, srcCard.offsetHeight);
+                                const dir2 = getEdgeDirection(x2, y2, targetCardX, targetCardY, targetCard.offsetWidth, targetCard.offsetHeight);
+                                
+                                const isLoop = (para.name === targetPara.name);
+                                const isPerformLoop = ctrl.type === 'PERFORM_LOOP';
                                 const pts = appState.lineControlPoints[connectionKey] || [];
 
                                 let pathD = "";
                                 if (pts.length === 0) {
-                                    let offset = Math.abs(x2 - x1) * 0.5;
-                                    if (offset < 60) offset = 60;
-
-                                    // Path drawing strategy: S-curves for forward paths, multi-curves loops for backward/same loops
-                                    if (x2 >= x1) {
-                                        pathD = `M ${x1} ${y1} C ${x1 + offset} ${y1}, ${x2 - offset} ${y2}, ${x2} ${y2}`;
+                                    let dist = Math.max(60, Math.hypot(x2-x1, y2-y1) * 0.4);
+                                    if (isLoop && (!appState.connectionOffsets || !appState.connectionOffsets[connectionKey])) {
+                                        const cx = srcCardX + (srcCard.offsetWidth / 2);
+                                        const bottomY = srcCardY + srcCard.offsetHeight;
+                                        pathD = `M ${x1} ${y1} C ${cx + 180} ${bottomY + 150}, ${cx + 180} ${srcCardY - 100}, ${x2} ${y2}`;
                                     } else {
-                                        // Loop backwards gracefully to avoid line spaghetti overlapping
-                                        const cp1x = x1 + 100;
-                                        const cp1y = y1;
-                                        const cp2x = x2 - 100;
-                                        const cp2y = y2;
-                                        pathD = `M ${x1} ${y1} C ${cp1x} ${cp1y}, ${cp1x} ${y1 + (y2 - y1)/2}, ${cp2x} ${y1 + (y2 - y1)/2} C ${cp2x} ${y1 + (y2 - y1)/2}, ${cp2x} ${cp2y}, ${x2} ${y2}`;
+                                        let cp1 = getOffsetCP(x1, y1, dir1, dist);
+                                        let cp2 = getOffsetCP(x2, y2, dir2, dist);
+                                        pathD = `M ${x1} ${y1} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${x2} ${y2}`;
                                     }
                                 } else {
-                                    // Use clean rounded-joint segmented lines for manual routes
-                                    pathD = `M ${x1} ${y1}`;
-                                    pts.forEach(pt => {
-                                        pathD += ` L ${pt.x} ${pt.y}`;
-                                    });
-                                    pathD += ` L ${x2} ${y2}`;
+                                    const fullPoints = [{x: x1, y: y1}, ...pts, {x: x2, y: y2}];
+                                    pathD = getCurvePath(fullPoints, dir1, dir2);
                                 }
 
                                 const isTested = appState.coverage[ctrl.id] === true;
-                                const color = isTested ? '#10b981' : '#ef4444';
-                                const marker = isTested ? 'url(#arrow-tested)' : 'url(#arrow-untested)';
+                                let color = isTested ? '#10b981' : '#ef4444';
+                                let marker = isTested ? 'url(#arrow-tested)' : 'url(#arrow-untested)';
+                                if (isPerformLoop) { color = '#f59e0b'; marker = 'url(#arrow-loop)'; }
 
-                                // Dual SVG Paths: Invisible thick path for mouse clicks, and thin colored one
                                 const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
 
-                                // Thick clickable helper line
                                 const pathHelper = document.createElementNS("http://www.w3.org/2000/svg", "path");
                                 pathHelper.setAttribute("d", pathD);
                                 pathHelper.setAttribute("stroke", "transparent");
-                                pathHelper.setAttribute("stroke-width", "12");
+                                pathHelper.setAttribute("stroke-width", "16");
                                 pathHelper.setAttribute("fill", "none");
                                 pathHelper.setAttribute("pointer-events", "stroke");
                                 pathHelper.setAttribute("class", "cursor-pointer");
 
-                                // Visible path
                                 const pathReal = document.createElementNS("http://www.w3.org/2000/svg", "path");
                                 pathReal.setAttribute("d", pathD);
                                 pathReal.setAttribute("stroke", color);
@@ -1283,44 +882,30 @@
                                 pathReal.setAttribute("class", "flow-path");
                                 pathReal.setAttribute("stroke-linejoin", "round");
                                 pathReal.setAttribute("stroke-linecap", "round");
-                                pathReal.style.color = color;
+                                if (isPerformLoop) pathReal.setAttribute("stroke-dasharray", "6, 4");
 
-                                // Dragging on the line spawns a control point; Simple click toggles status
                                 pathHelper.addEventListener('mousedown', function(e) {
                                     if (e.button !== 0) return;
                                     e.stopPropagation();
+                                    const container = document.getElementById('canvas-container');
+                                    const rect = container.getBoundingClientRect();
+                                    const mouseX = (e.clientX - rect.left - appState.pan.x) / appState.zoomLevel;
+                                    const mouseY = (e.clientY - rect.top - appState.pan.y) / appState.zoomLevel;
 
-                                    const rect = workspace.getBoundingClientRect();
-                                    const mouseX = (e.clientX - rect.left) / appState.zoomLevel;
-                                    const mouseY = (e.clientY - rect.top) / appState.zoomLevel;
-
-                                    if (!appState.lineControlPoints[connectionKey]) {
-                                        appState.lineControlPoints[connectionKey] = [];
-                                    }
-
+                                    if (!appState.lineControlPoints[connectionKey]) appState.lineControlPoints[connectionKey] = [];
                                     const activePts = appState.lineControlPoints[connectionKey];
                                     const fullPoints = [{x: x1, y: y1}, ...activePts, {x: x2, y: y2}];
 
-                                    let minDist = Infinity;
-                                    let insertIdx = 0;
+                                    let minDist = Infinity, insertIdx = 0;
                                     for (let i = 0; i < fullPoints.length - 1; i++) {
                                         const dist = getDistanceToSegment(mouseX, mouseY, fullPoints[i].x, fullPoints[i].y, fullPoints[i+1].x, fullPoints[i+1].y);
-                                        if (dist < minDist) {
-                                            minDist = dist;
-                                            insertIdx = i; // Map perfectly to the array insertion index
-                                        }
+                                        if (dist < minDist) { minDist = dist; insertIdx = i; }
                                     }
 
                                     appState.lineControlPoints[connectionKey].splice(insertIdx, 0, {x: mouseX, y: mouseY});
-
                                     isDraggingCP = true;
-                                    activeCPDrag = {
-                                        connectionKey: connectionKey,
-                                        index: insertIdx
-                                    };
-
-                                    saveToLocalStorage();
-                                    drawFlowlines();
+                                    activeCPDrag = { type: 'mid', connectionKey: connectionKey, index: insertIdx };
+                                    saveToLocalStorage(); drawFlowlines();
                                 });
 
                                 pathHelper.addEventListener('click', function() {
@@ -1328,45 +913,48 @@
                                     toggleControlCoverage(ctrl.id);
                                 });
 
-                                g.appendChild(pathHelper);
-                                g.appendChild(pathReal);
-                                svgGroup.appendChild(g);
+                                g.appendChild(pathHelper); g.appendChild(pathReal); svgGroup.appendChild(g);
+                                
+                                const circleStart = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                                circleStart.setAttribute("cx", x1); circleStart.setAttribute("cy", y1);
+                                circleStart.setAttribute("r", "5.5"); circleStart.setAttribute("fill", "#10b981");
+                                circleStart.setAttribute("stroke", "#0f172a"); circleStart.setAttribute("stroke-width", "1.5");
+                                circleStart.setAttribute("class", "cursor-move path-handle");
+                                circleStart.style.pointerEvents = "all";
+                                circleStart.addEventListener('mousedown', function(e) {
+                                    if (e.button !== 0) return; e.stopPropagation(); e.preventDefault();
+                                    isDraggingCP = true; activeCPDrag = { type: 'start', connectionKey: connectionKey, srcNode: para.name };
+                                });
+                                svgGroup.appendChild(circleStart);
 
-                                // Render manual line control point visual handles
+                                const circleEnd = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                                circleEnd.setAttribute("cx", x2); circleEnd.setAttribute("cy", y2);
+                                circleEnd.setAttribute("r", "5.5"); circleEnd.setAttribute("fill", "#ef4444");
+                                circleEnd.setAttribute("stroke", "#0f172a"); circleEnd.setAttribute("stroke-width", "1.5");
+                                circleEnd.setAttribute("class", "cursor-move path-handle");
+                                circleEnd.style.pointerEvents = "all";
+                                circleEnd.addEventListener('mousedown', function(e) {
+                                    if (e.button !== 0) return; e.stopPropagation(); e.preventDefault();
+                                    isDraggingCP = true; activeCPDrag = { type: 'end', connectionKey: connectionKey, targetNode: targetPara.name };
+                                });
+                                svgGroup.appendChild(circleEnd);
+
                                 pts.forEach((pt, idx) => {
                                     const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-                                    circle.setAttribute("cx", pt.x);
-                                    circle.setAttribute("cy", pt.y);
-                                    circle.setAttribute("r", "7");
-                                    circle.setAttribute("fill", "#22d3ee"); // Vivid cyan handle dot
-                                    circle.setAttribute("stroke", "#ffffff");
-                                    circle.setAttribute("stroke-width", "2");
-                                    circle.setAttribute("class", "cursor-move hover:scale-125 transition-transform duration-100");
+                                    circle.setAttribute("cx", pt.x); circle.setAttribute("cy", pt.y);
+                                    circle.setAttribute("r", "5.5"); circle.setAttribute("fill", "#38bdf8");
+                                    circle.setAttribute("stroke", "#0f172a"); circle.setAttribute("stroke-width", "2");
+                                    circle.setAttribute("class", "cursor-move path-handle");
                                     circle.style.pointerEvents = "all";
-
                                     circle.addEventListener('mousedown', function(e) {
-                                        if (e.button !== 0) return;
-                                        e.stopPropagation();
-                                        e.preventDefault();
-                                        isDraggingCP = true;
-                                        activeCPDrag = {
-                                            connectionKey: connectionKey,
-                                            index: idx
-                                        };
+                                        if (e.button !== 0) return; e.stopPropagation(); e.preventDefault();
+                                        isDraggingCP = true; activeCPDrag = { type: 'mid', connectionKey: connectionKey, index: idx };
                                     });
-
                                     circle.addEventListener('contextmenu', function(e) {
-                                        e.preventDefault();
-                                        e.stopPropagation();
+                                        e.preventDefault(); e.stopPropagation();
                                         appState.lineControlPoints[connectionKey].splice(idx, 1);
-                                        saveToLocalStorage();
-                                        drawFlowlines();
-                                        showNotification("Removed Control Point", "Re-aligned connection line route.");
+                                        saveToLocalStorage(); drawFlowlines();
                                     });
-
-                                    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-                                    title.textContent = "Drag to route path. Right-click to remove point.";
-                                    circle.appendChild(title);
                                     svgGroup.appendChild(circle);
                                 });
                             }
@@ -1374,11 +962,9 @@
                     }
                 });
             });
-
             updateGlobalStats();
         }
 
-        // Helper recursive renderer for paragraph execution block rows
         function renderControlsToCard(controls, container, isNested = false) {
             if (controls.length === 0 && !isNested) {
                 container.innerHTML = `<div class="text-[11px] text-slate-500 italic text-center py-2">No branch execution elements found.</div>`;
@@ -1388,7 +974,7 @@
             controls.forEach(ctrl => {
                 const row = document.createElement('div');
                 row.id = `row-${ctrl.id}`;
-                row.className = `p-1.5 rounded bg-slate-950 border border-slate-800/60 flex flex-col space-y-1 ${isNested ? 'mt-1.5 bg-slate-900/40' : ''}`;
+                row.className = `p-1.5 rounded bg-slate-950 border border-slate-800/60 flex flex-col space-y-1 relative ${isNested ? 'mt-1.5 bg-slate-900/40' : ''}`;
 
                 if (ctrl.type === 'PERFORM' || ctrl.type === 'PERFORM_LOOP') {
                     const isTested = appState.coverage[ctrl.id] === true;
@@ -1398,14 +984,36 @@
                                 <span class="w-1.5 h-1.5 rounded-full ${ctrl.type === 'PERFORM_LOOP' ? 'bg-amber-400' : 'bg-indigo-400'} shrink-0"></span>
                                 <div class="text-[10px] text-slate-200 font-mono truncate" title="${ctrl.text}">${ctrl.text}</div>
                             </div>
-                            <button onclick="toggleControlCoverage('${ctrl.id}')" class="px-1.5 py-0.5 text-[9px] font-semibold rounded shrink-0 ${isTested ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400 border border-slate-700'} hover:opacity-80 transition">
+                            <button onclick="toggleControlCoverage('${ctrl.id}')" class="px-1.5 py-0.5 text-[9px] font-semibold rounded shrink-0 ${isTested ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400 border border-slate-700'} hover:opacity-80 transition relative z-10">
                                 ${isTested ? 'Tested' : 'Untested'}
                             </button>
                         </div>
-                        <div class="flex items-center gap-1 mt-0.5">
+                        <div class="flex items-center gap-1 mt-0.5 relative z-10">
                             <input type="text" onchange="updateControlNote('${ctrl.id}', this.value)" value="${appState.controlComments[ctrl.id] || ''}" placeholder="Add branch test comment..." class="w-full bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-[9px] text-slate-300 focus:outline-none focus:border-slate-700">
                         </div>
                     `;
+                } else if (ctrl.type === 'INLINE_PERFORM') {
+                    const isTested = appState.coverage[ctrl.id] === true;
+                    row.innerHTML = `
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="flex items-center gap-1.5 overflow-hidden">
+                                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
+                                <div class="text-[10px] text-amber-200/80 font-mono truncate" title="${ctrl.text}">${ctrl.text}</div>
+                            </div>
+                            <button onclick="toggleControlCoverage('${ctrl.id}')" class="px-1.5 py-0.5 text-[9px] font-semibold rounded shrink-0 ${isTested ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400 border border-slate-700'} hover:opacity-80 transition relative z-10">
+                                ${isTested ? 'Tested' : 'Untested'}
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-1 mt-0.5 relative z-10">
+                            <input type="text" onchange="updateControlNote('${ctrl.id}', this.value)" value="${appState.controlComments[ctrl.id] || ''}" placeholder="Loop note..." class="w-full bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-[9px] text-slate-300 focus:outline-none focus:border-slate-700">
+                        </div>
+                    `;
+                    if (ctrl.controls.length > 0) {
+                        let innerContainer = document.createElement('div');
+                        innerContainer.className = "pt-1 mt-1 border-l border-amber-500/30 pl-1.5 ml-1";
+                        renderControlsToCard(ctrl.controls, innerContainer, true);
+                        row.appendChild(innerContainer);
+                    }
                 } else if (ctrl.type === 'IF_ELSE' || ctrl.type === 'EVALUATE') {
                     let branchesContainer = document.createElement('div');
                     branchesContainer.className = "space-y-1.5 mt-1 border-l border-slate-700 pl-1.5 ml-1";
@@ -1415,7 +1023,7 @@
                         const isBranchTested = appState.coverage[key] === true;
                         
                         let branchItem = document.createElement('div');
-                        branchItem.className = "flex flex-col space-y-1 p-1 rounded bg-slate-900 border border-slate-800/80 shadow-sm";
+                        branchItem.className = "flex flex-col space-y-1 p-1 rounded bg-slate-900 border border-slate-800/80 shadow-sm relative z-10";
                         branchItem.innerHTML = `
                              <div class="flex items-center justify-between gap-2">
                                 <span class="text-[9px] font-mono text-slate-300 truncate" title="${branch.name}">${branch.name}</span>
@@ -1425,8 +1033,6 @@
                              </div>
                              <input type="text" onchange="updateBranchNote('${ctrl.id}', ${bIdx}, this.value)" value="${appState.controlComments[key] || ''}" placeholder="Branch note..." class="w-full bg-slate-950 border border-slate-800 rounded px-1 py-0.5 text-[8px] text-slate-400 focus:outline-none focus:border-slate-700">
                         `;
-                        
-                        // Append internally nested elements explicitly directly inside this conditional branch block
                         if (branch.controls.length > 0) {
                             let innerContainer = document.createElement('div');
                             innerContainer.className = "pt-1";
@@ -1435,7 +1041,6 @@
                         }
                         branchesContainer.appendChild(branchItem);
                     });
-
                     row.innerHTML = `<div class="text-[10px] font-semibold text-slate-400 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>${ctrl.text}</div>`;
                     row.appendChild(branchesContainer);
                 }
@@ -1443,221 +1048,314 @@
             });
         }
 
-        // Generates the paragraph card elements and populates visual workspace
         function renderVisualizerWorkspace() {
             const container = document.getElementById('nodes-container');
             if (!container) return;
-
             container.innerHTML = '';
 
             appState.paragraphs.forEach(para => {
                 const pos = appState.nodePositions[para.name] || { x: 50, y: 50 };
-                
-                // Build Card Container Box
                 const card = document.createElement('div');
                 card.id = `card-${para.name}`;
                 card.className = "absolute w-80 bg-slate-900 border border-slate-800 rounded-xl shadow-xl flex flex-col overflow-hidden no-select hover:border-slate-700 transition-colors";
-                card.style.left = `${pos.x}px`;
-                card.style.top = `${pos.y}px`;
+                card.style.left = `${pos.x}px`; card.style.top = `${pos.y}px`;
 
-                // Card Header Token Resolver Segment
                 let headerContent = '';
                 if (appState.showResolved) {
                     headerContent = `
                         <div class="flex justify-between items-start mb-1">
-                            <div class="text-[10px] text-slate-500 font-mono">Raw: ${para.name}</div>
-                            <button onclick="jumpToCode('${para.name}')" class="text-[9px] bg-slate-850 hover:bg-slate-700 text-cyan-400 px-1.5 py-0.5 rounded border border-slate-750 flex items-center gap-1 transition shadow-sm">
+                            <div class="text-[10px] text-slate-500 font-mono truncate">Raw: ${para.name}</div>
+                            <button onclick="jumpToCode('${para.name}')" class="text-[9px] bg-slate-850 hover:bg-slate-700 text-cyan-400 px-1.5 py-0.5 rounded border border-slate-750 flex items-center gap-1 transition shadow-sm z-10 shrink-0 relative">
                                 <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>Code
                             </button>
                         </div>
-                        <div class="text-xs font-semibold text-cyan-400 break-all leading-tight">
-                            ${resolveParagraphName(para.name)}
-                        </div>
+                        <div class="text-xs font-semibold text-cyan-400 break-all leading-tight">${resolveParagraphName(para.name)}</div>
                     `;
                 } else {
-                    // Render editable dictionary pickers inside paragraph name
                     const tokens = para.name.split('-');
                     let tokensHTML = [];
-
                     tokens.forEach(token => {
-                        const upperToken = token.toUpperCase();
-                        if (appState.dictionary[upperToken] && appState.dictionary[upperToken].length > 0) {
-                            // Render dropdown with mapping choices
-                            const currentVal = appState.resolutions[para.name]?.[upperToken] || appState.dictionary[upperToken][0];
+                        const upper = token.toUpperCase();
+                        if (appState.dictionary[upper] && appState.dictionary[upper].length > 0) {
+                            const currentVal = appState.resolutions[para.name]?.[upper] || appState.dictionary[upper][0];
                             let optionsHTML = '';
-                            
-                            appState.dictionary[upperToken].forEach(opt => {
+                            appState.dictionary[upper].forEach(opt => {
                                 optionsHTML += `<option value="${opt}" ${opt === currentVal ? 'selected' : ''}>${opt}</option>`;
                             });
-
-                            tokensHTML.push(`
-                                <span class="inline-block relative">
-                                    <select onchange="handleManualTokenResolution('${para.name}', '${upperToken}', this.value)" class="bg-slate-800 hover:bg-slate-750 text-cyan-400 text-[11px] font-bold py-0.5 px-1.5 rounded border border-slate-700 outline-none appearance-none cursor-pointer">
-                                        <option value="${token}">${token}</option>
-                                        ${optionsHTML}
-                                    </select>
-                                </span>
-                            `);
-                        } else {
-                            // Non abbreviational normal segment
-                            tokensHTML.push(`<span class="text-slate-300 py-0.5">${token}</span>`);
-                        }
+                            tokensHTML.push(`<span class="inline-block relative z-10"><select onchange="handleManualTokenResolution('${para.name}', '${upper}', this.value)" class="bg-slate-800 hover:bg-slate-750 text-cyan-400 text-[11px] font-bold py-0.5 px-1.5 rounded border border-slate-700 outline-none appearance-none cursor-pointer"><option value="${token}">${token}</option>${optionsHTML}</select></span>`);
+                        } else tokensHTML.push(`<span class="text-slate-300 py-0.5">${token}</span>`);
                     });
 
                     headerContent = `
                         <div class="flex justify-between items-start mb-1">
-                            <div class="text-[9px] text-slate-500 font-medium">Resolvers: Select meaning context</div>
-                            <button onclick="jumpToCode('${para.name}')" class="text-[9px] bg-slate-850 hover:bg-slate-700 text-cyan-400 px-1.5 py-0.5 rounded border border-slate-750 flex items-center gap-1 transition shadow-sm">
+                            <div class="text-[9px] text-slate-500 font-medium">Resolvers Context</div>
+                            <button onclick="jumpToCode('${para.name}')" class="text-[9px] bg-slate-850 hover:bg-slate-700 text-cyan-400 px-1.5 py-0.5 rounded border border-slate-750 flex items-center gap-1 transition shadow-sm z-10 shrink-0 relative">
                                 <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>Code
                             </button>
                         </div>
-                        <div class="flex flex-wrap items-center gap-1.5 leading-none">
-                            ${tokensHTML.join('<span class="text-slate-600">-</span>')}
-                        </div>
+                        <div class="flex flex-wrap items-center gap-1.5 leading-none">${tokensHTML.join('<span class="text-slate-600">-</span>')}</div>
                     `;
                 }
 
-                // Append Card Header
                 const cardHeader = document.createElement('div');
-                cardHeader.className = "card-drag-handle bg-slate-950 px-4 py-3 border-b border-slate-850 cursor-grab flex flex-col justify-between select-none";
+                cardHeader.className = "card-drag-handle bg-slate-950 px-4 py-3 border-b border-slate-850 cursor-grab flex flex-col justify-between select-none relative";
                 cardHeader.innerHTML = headerContent;
                 card.appendChild(cardHeader);
 
-                // Card Control Paths list (Internal elements) built using recursion
                 const cardBody = document.createElement('div');
-                cardBody.className = "p-2.5 space-y-1.5 flex-1 overflow-y-auto max-h-64";
-                
+                cardBody.className = "p-2.5 space-y-1.5 flex-1 overflow-y-auto scroll-smooth";
                 renderControlsToCard(para.controls, cardBody, false);
-                
                 card.appendChild(cardBody);
 
-                // Paragraph level comment box footer section
                 const cardFooter = document.createElement('div');
-                cardFooter.className = "px-3 pb-3 shrink-0";
-                cardFooter.innerHTML = `
-                    <div class="pt-2 border-t border-slate-850">
-                        <textarea onchange="updateParagraphComment('${para.name}', this.value)" class="w-full bg-slate-950 border border-slate-850 rounded-lg p-2 text-[10px] text-slate-300 placeholder-slate-500 resize-none h-14 focus:outline-none focus:border-slate-700" placeholder="General paragraph comment/notes...">${appState.comments[para.name] || ''}</textarea>
-                    </div>
-                `;
+                cardFooter.className = "px-3 pb-3 shrink-0 relative z-10";
+                cardFooter.innerHTML = `<div class="pt-2 border-t border-slate-850"><textarea onchange="updateParagraphComment('${para.name}', this.value)" class="w-full bg-slate-950 border border-slate-850 rounded-lg p-2 text-[10px] text-slate-300 placeholder-slate-500 resize-none h-14 focus:outline-none focus:border-slate-700" placeholder="General paragraph comment/notes...">${appState.comments[para.name] || ''}</textarea></div>`;
                 card.appendChild(cardFooter);
 
-                // Mount card and activate draggable controller
                 container.appendChild(card);
                 makeNodeDraggable(card, para.name);
             });
-
-            // Trigger flow connection redraw loop
             setTimeout(drawFlowlines, 20);
         }
 
-        // Toggles tested status of PERFORMs
-        function toggleControlCoverage(ctrlId) {
-            appState.coverage[ctrlId] = !appState.coverage[ctrlId];
+        function makeNodeDraggable(element, paraName) {
+            let startMouseX = 0, startMouseY = 0, startNodeX = 0, startNodeY = 0;
+            const header = element.querySelector('.card-drag-handle');
+            (header || element).onmousedown = dragMouseDown;
+
+            function dragMouseDown(e) {
+                e.stopPropagation();
+                if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION' || e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+                e.preventDefault();
+                startMouseX = e.clientX; startMouseY = e.clientY;
+                startNodeX = appState.nodePositions[paraName].x; startNodeY = appState.nodePositions[paraName].y;
+                document.onmouseup = closeDragElement;
+                document.onmousemove = elementDrag;
+                element.classList.add('dragging');
+            }
+
+            function elementDrag(e) {
+                e.preventDefault();
+                const dx = (e.clientX - startMouseX) / appState.zoomLevel;
+                const dy = (e.clientY - startMouseY) / appState.zoomLevel;
+                const newX = startNodeX + dx, newY = startNodeY + dy;
+                element.style.left = newX + "px"; element.style.top = newY + "px";
+                appState.nodePositions[paraName] = { x: newX, y: newY };
+                drawFlowlines();
+            }
+
+            function closeDragElement() {
+                document.onmouseup = null; document.onmousemove = null;
+                element.classList.remove('dragging');
+                saveToLocalStorage();
+            }
+        }
+
+        function toggleForceLayout(autoStop = false) {
+            appState.forceLayoutActive = !appState.forceLayoutActive;
+            const btn = document.getElementById('btn-force-layout');
             
-            // Re-sync internally inside paragraph list structure recursively
-            appState.paragraphs.forEach(p => {
-                forEachControl(p.controls, c => {
-                    if (c.id === ctrlId) {
-                        c.tested = appState.coverage[ctrlId];
-                    }
-                });
-            });
-
-            saveToLocalStorage();
-            renderVisualizerWorkspace();
-            showNotification("Status Updated", "Testing branch status modified.");
-        }
-
-        // Toggles tested status of specific branch options (IF or EVALUATE index targets)
-        function toggleBranchCoverage(ctrlId, branchIndex) {
-            const key = `${ctrlId}_branch_${branchIndex}`;
-            appState.coverage[key] = !appState.coverage[key];
-
-            appState.paragraphs.forEach(p => {
-                forEachControl(p.controls, c => {
-                    if (c.id === ctrlId) {
-                        c.tested[branchIndex] = appState.coverage[key];
-                    }
-                });
-            });
-
-            saveToLocalStorage();
-            renderVisualizerWorkspace();
-            showNotification("Status Updated", "Sub-branch coverage state updated.");
-        }
-
-        // Save inline text comments for controls and branches
-        function updateControlNote(ctrlId, text) {
-            appState.controlComments[ctrlId] = text;
-            saveToLocalStorage();
-        }
-
-        function updateBranchNote(ctrlId, branchIndex, text) {
-            const key = `${ctrlId}_branch_${branchIndex}`;
-            appState.controlComments[key] = text;
-            saveToLocalStorage();
-        }
-
-        function updateParagraphComment(paraName, text) {
-            appState.comments[paraName] = text;
-            saveToLocalStorage();
-        }
-
-        // Real-time coverage mathematics summary engine
-        function updateGlobalStats() {
-            let total = 0;
-            let tested = 0;
-
-            appState.paragraphs.forEach(p => {
-                forEachControl(p.controls, c => {
-                    if (c.type === 'IF_ELSE' || c.type === 'EVALUATE') {
-                        c.tested.forEach(val => {
-                            total++;
-                            if (val === true) tested++;
-                        });
-                    } else {
-                        total++;
-                        if (c.tested === true) tested++;
-                    }
-                });
-            });
-
-            const percent = total > 0 ? Math.round((tested / total) * 100) : 0;
-
-            document.getElementById('tested-count').innerText = `${tested} / ${total}`;
-            document.getElementById('tested-percentage').innerText = `${percent}%`;
-            document.getElementById('tested-progress-bar').style.width = `${percent}%`;
-
-            // Report Tab matching variables
-            document.getElementById('report-total-paragraphs').innerText = appState.paragraphs.length;
-            document.getElementById('report-total-branches').innerText = total;
-            document.getElementById('report-tested-branches').innerText = tested;
-            document.getElementById('report-percentage').innerText = `${percent}%`;
-        }
-
-        // Changes zoom level scale factor for the workspace canvas grid
-        function changeZoom(factor) {
-            let newZoom = appState.zoomLevel + factor;
-            // Cap boundary limits
-            if (newZoom < 0.4) newZoom = 0.4;
-            if (newZoom > 2.0) newZoom = 2.0;
-
-            appState.zoomLevel = parseFloat(newZoom.toFixed(1));
-            applyZoomStyles();
-        }
-
-        function resetZoom() {
-            appState.zoomLevel = 1.0;
-            applyZoomStyles();
-        }
-
-        function applyZoomStyles() {
-            document.getElementById('zoom-value').innerText = `${Math.round(appState.zoomLevel * 100)}%`;
-            document.getElementById('visual-workspace').style.transform = `scale(${appState.zoomLevel})`;
-            drawFlowlines();
+            if (appState.forceLayoutActive) {
+                btn.classList.add('bg-rose-600', 'border-rose-500');
+                btn.classList.remove('bg-slate-800', 'border-slate-700');
+                btn.innerHTML = `<svg class="w-3.5 h-3.5 text-white animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> Stop Simulation`;
+                
+                appState.forceAlpha = 1.0;
+                appState.paragraphs.forEach(p => { p.vx = 0; p.vy = 0; });
+                forceLoop();
+                showNotification("Force Layout", "Organic physics simulation started.");
+            } else {
+                btn.classList.remove('bg-rose-600', 'border-rose-500');
+                btn.classList.add('bg-slate-800', 'border-slate-700');
+                btn.innerHTML = `<svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg> Toggle Force Layout`;
+                
+                cancelAnimationFrame(forceAnimFrame);
+                showNotification("Force Layout", autoStop ? "Nodes settled into place." : "Simulation paused.");
+                saveToLocalStorage();
+            }
         }
         
-        // Recursive Branch Html Builder for Reports View
+        function forceLoop() {
+            if (!appState.forceLayoutActive) return;
+            
+            appState.forceAlpha *= 0.97;
+            if (appState.forceAlpha < 0.005) {
+                toggleForceLayout(true);
+                return;
+            }
+            
+            const k = 0.08 * appState.forceAlpha; 
+            const rep = 800000 * appState.forceAlpha; 
+            const alignK = 0.15 * appState.forceAlpha;
+            const damping = 0.6;
+            const centerK = 0.002 * appState.forceAlpha;
+            
+            // 1. Node-Node Repulsion & overlap prevention
+            for (let i = 0; i < appState.paragraphs.length; i++) {
+                for (let j = i + 1; j < appState.paragraphs.length; j++) {
+                    let p1Name = appState.paragraphs[i].name;
+                    let p2Name = appState.paragraphs[j].name;
+                    let p1 = appState.nodePositions[p1Name];
+                    let p2 = appState.nodePositions[p2Name];
+                    if(!p1 || !p2) continue;
+                    
+                    let card1 = document.getElementById(`card-${p1Name}`);
+                    let card2 = document.getElementById(`card-${p2Name}`);
+                    let w1 = card1 ? card1.offsetWidth : 320, h1 = card1 ? card1.offsetHeight : 100;
+                    let w2 = card2 ? card2.offsetWidth : 320, h2 = card2 ? card2.offsetHeight : 100;
+                    
+                    let c1x = p1.x + w1/2, c1y = p1.y + h1/2;
+                    let c2x = p2.x + w2/2, c2y = p2.y + h2/2;
+
+                    let dx = c1x - c2x, dy = c1y - c2y;
+                    let distSq = dx*dx + dy*dy;
+                    if (distSq < 1) { dx = Math.random()*10; dy = Math.random()*10; distSq = dx*dx+dy*dy; }
+                    let dist = Math.sqrt(distSq);
+                    
+                    let minXDist = (w1 + w2) / 2 + 60; 
+                    let minYDist = (h1 + h2) / 2 + 40;
+                    
+                    if (Math.abs(dx) < minXDist && Math.abs(dy) < minYDist) {
+                        let pushX = (minXDist - Math.abs(dx)) * Math.sign(dx) * 0.5 * appState.forceAlpha;
+                        let pushY = (minYDist - Math.abs(dy)) * Math.sign(dy) * 0.5 * appState.forceAlpha;
+                        appState.paragraphs[i].vx += pushX; appState.paragraphs[i].vy += pushY;
+                        appState.paragraphs[j].vx -= pushX; appState.paragraphs[j].vy -= pushY;
+                    }
+                    
+                    let force = rep / (distSq + 1);
+                    let fx = (dx/dist) * force, fy = (dy/dist) * force;
+                    
+                    if (Math.abs(dy) < minYDist * 1.5) {
+                        fx *= 2.5; 
+                    }
+
+                    appState.paragraphs[i].vx += fx; appState.paragraphs[i].vy += fy;
+                    appState.paragraphs[j].vx -= fx; appState.paragraphs[j].vy -= fy;
+                }
+            }
+            
+            // 2. Node-Edge Repulsion (Weaker distance requirement)
+            let edges = [];
+            appState.paragraphs.forEach(p => {
+                forEachControl(p.controls, c => {
+                    if (c.target && appState.nodePositions[c.target]) {
+                        edges.push({src: p.name, tgt: c.target});
+                    }
+                });
+            });
+
+            const edgeRepWeight = 100000 * appState.forceAlpha;
+            edges.forEach(edge => {
+                let p1 = appState.nodePositions[edge.src];
+                let p2 = appState.nodePositions[edge.tgt];
+                if(!p1 || !p2) return;
+                
+                let card1 = document.getElementById(`card-${edge.src}`);
+                let card2 = document.getElementById(`card-${edge.tgt}`);
+                let cx1 = p1.x + (card1 ? card1.offsetWidth/2 : 160);
+                let cy1 = p1.y + (card1 ? card1.offsetHeight/2 : 50);
+                let cx2 = p2.x + (card2 ? card2.offsetWidth/2 : 160);
+                let cy2 = p2.y + (card2 ? card2.offsetHeight/2 : 50);
+                
+                appState.paragraphs.forEach(p3 => {
+                    if(p3.name === edge.src || p3.name === edge.tgt) return;
+                    let pos3 = appState.nodePositions[p3.name];
+                    let card3 = document.getElementById(`card-${p3.name}`);
+                    let cx3 = pos3.x + (card3 ? card3.offsetWidth/2 : 160);
+                    let cy3 = pos3.y + (card3 ? card3.offsetHeight/2 : 50);
+                    
+                    let l2 = (cx2 - cx1)*(cx2 - cx1) + (cy2 - cy1)*(cy2 - cy1);
+                    if (l2 === 0) return;
+                    
+                    let t = ((cx3 - cx1) * (cx2 - cx1) + (cy3 - cy1) * (cy2 - cy1)) / l2;
+                    t = Math.max(0, Math.min(1, t));
+                    
+                    let projX = cx1 + t * (cx2 - cx1);
+                    let projY = cy1 + t * (cy2 - cy1);
+                    
+                    let dx = cx3 - projX;
+                    let dy = cy3 - projY;
+                    let distSq = dx*dx + dy*dy;
+                    
+                    if (distSq < 20000) { // ~140px threshold radius
+                        let dist = Math.sqrt(distSq) || 1;
+                        let force = edgeRepWeight / (distSq + 1);
+                        p3.vx += (dx/dist) * force;
+                        p3.vy += (dy/dist) * force;
+                    }
+                });
+            });
+            
+            // 3. Attraction and Straightening
+            appState.paragraphs.forEach(p => {
+                if(!appState.nodePositions[p.name]) return;
+                let card1 = document.getElementById(`card-${p.name}`);
+                let w1 = card1 ? card1.offsetWidth : 320;
+                
+                forEachControl(p.controls, c => {
+                    if (c.target && appState.nodePositions[c.target]) {
+                        let p1 = appState.nodePositions[p.name];
+                        let p2 = appState.nodePositions[c.target];
+                        let card2 = document.getElementById(`card-${c.target}`);
+                        let w2 = card2 ? card2.offsetWidth : 320;
+
+                        let c1x = p1.x + w1/2;
+                        let c2x = p2.x + w2/2;
+
+                        let dx = c2x - c1x, dy = p2.y - p1.y;
+                        let dist = Math.sqrt(dx*dx + dy*dy) || 1;
+                        
+                        let targetDist = 200; 
+                        let force = (dist - targetDist) * k;
+                        let fx = (dx/dist) * force, fy = (dy/dist) * force;
+                        
+                        p.vx += fx; p.vy += fy;
+                        
+                        let tp = appState.paragraphs.find(x => x.name === c.target);
+                        if (tp) {
+                            tp.vx -= fx; tp.vy -= fy;
+                            
+                            const flowForce = 15 * appState.forceAlpha;
+                            if (dy < 150 && p.name !== c.target) {
+                                p.vy -= flowForce; 
+                                tp.vy += flowForce;
+                            }
+
+                            let alignForce = (c2x - c1x) * alignK;
+                            p.vx += alignForce;
+                            tp.vx -= alignForce;
+                        }
+                    }
+                });
+            });
+            
+            // 4. Move nodes
+            let cx = 0, cy = 0, validNodes = 0;
+            appState.paragraphs.forEach(p => {
+                if(appState.nodePositions[p.name]) { cx += appState.nodePositions[p.name].x; cy += appState.nodePositions[p.name].y; validNodes++; }
+            });
+            cx /= validNodes || 1; cy /= validNodes || 1;
+            
+            appState.paragraphs.forEach(p => {
+                let pos = appState.nodePositions[p.name];
+                if(!pos) return;
+                
+                p.vx += (cx - pos.x) * centerK; p.vy += (cy - pos.y) * centerK;
+                
+                let speed = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
+                if (speed > 50) { p.vx = (p.vx/speed) * 50; p.vy = (p.vy/speed) * 50; }
+
+                pos.x += p.vx; pos.y += p.vy;
+                p.vx *= damping; p.vy *= damping;
+                
+                let card = document.getElementById(`card-${p.name}`);
+                if (card) { card.style.left = pos.x + 'px'; card.style.top = pos.y + 'px'; }
+            });
+            
+            drawFlowlines();
+            forceAnimFrame = requestAnimationFrame(forceLoop);
+        }
+
         function buildReportLogsRecursive(controls, depth = 0) {
             let html = '';
             controls.forEach(c => {
@@ -1676,11 +1374,21 @@
                                 </div>
                             </div>
                         `;
-                        // Recurse inner branching rules
-                        if (c.branches[idx].controls.length > 0) {
-                            html += buildReportLogsRecursive(c.branches[idx].controls, depth + 1.5);
-                        }
+                        if (c.branches[idx].controls.length > 0) html += buildReportLogsRecursive(c.branches[idx].controls, depth + 1.5);
                     });
+                } else if (c.type === 'INLINE_PERFORM') {
+                    const isTested = appState.coverage[c.id] === true;
+                    const comment = appState.controlComments[c.id] || '';
+                    html += `
+                        <div ${padding} class="flex items-start gap-2 mt-1.5">
+                            <span class="inline-block w-2.5 h-2.5 rounded-full ${isTested ? 'bg-emerald-500' : 'bg-amber-500'} mt-0.5 shrink-0"></span>
+                            <div class="flex-1">
+                                <span class="font-mono text-[10px] text-amber-200/80 font-medium">${c.text}</span>
+                                ${comment ? `<div class="text-[9px] text-slate-400 italic">${comment}</div>` : ''}
+                            </div>
+                        </div>
+                    `;
+                    if (c.controls.length > 0) html += buildReportLogsRecursive(c.controls, depth + 1.5);
                 } else {
                     const isTested = appState.coverage[c.id] === true;
                     const comment = appState.controlComments[c.id] || '';
@@ -1698,182 +1406,263 @@
             return html;
         }
 
-        // Generates clean print-ready markdown summary rows
         function buildCoverageReport() {
             const tbody = document.getElementById('report-tbody');
             if (!tbody) return;
-
             tbody.innerHTML = '';
-
             if (appState.paragraphs.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="3" class="p-6 text-center text-slate-500 italic">No program paragraphs parsed. Generate flow first.</td></tr>`;
                 return;
             }
 
             appState.paragraphs.forEach(p => {
-                // Find and compile paragraph coverage status elements
-                let branchLogsHTML = '<div class="space-y-1">';
-                
-                branchLogsHTML += buildReportLogsRecursive(p.controls);
-
-                if (p.controls.length === 0) {
-                    branchLogsHTML = `<span class="text-[10px] text-slate-500 italic">No execution branches</span>`;
-                }
-                branchLogsHTML += '</div>';
+                let html = '<div class="space-y-1">';
+                html += buildReportLogsRecursive(p.controls);
+                if (p.controls.length === 0) html = `<span class="text-[10px] text-slate-500 italic">No execution branches</span>`;
+                html += '</div>';
 
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-slate-850/50 transition-colors";
-
                 tr.innerHTML = `
                     <td class="p-3 align-top border-r border-slate-850">
                         <div class="font-bold text-slate-200 font-mono text-xs">${p.name}</div>
                         <div class="text-[10px] text-cyan-400 font-medium mt-1">${resolveParagraphName(p.name)}</div>
                     </td>
-                    <td class="p-3 align-top border-r border-slate-850 w-72">
-                        ${branchLogsHTML}
-                    </td>
+                    <td class="p-3 align-top border-r border-slate-850 w-72">${html}</td>
                     <td class="p-3 align-top text-slate-400">
                         ${appState.comments[p.name] ? `<div class="text-[11px] leading-relaxed whitespace-pre-line">${appState.comments[p.name]}</div>` : '<span class="text-slate-600 italic">No notes added.</span>'}
                     </td>
                 `;
-
                 tbody.appendChild(tr);
             });
         }
 
-        // Local Browser storage loader
-        function loadFromLocalStorage() {
-            try {
-                const data = localStorage.getItem('cob_viz_workspace_v2');
-                if (data) {
-                    const parsed = JSON.parse(data);
-                    
-                    appState.rawCode = parsed.rawCode || "";
-                    if (parsed.dictionary) appState.dictionary = parsed.dictionary;
-                    appState.resolutions = parsed.resolutions || {};
-                    appState.paragraphs = parsed.paragraphs || [];
-                    appState.comments = parsed.comments || {};
-                    appState.controlComments = parsed.controlComments || {};
-                    appState.nodePositions = parsed.nodePositions || {};
-                    appState.coverage = parsed.coverage || {};
-                    appState.lineControlPoints = parsed.lineControlPoints || {};
-                    appState.showResolved = parsed.showResolved === true;
-                    appState.stripSequence = parsed.stripSequence !== false;
-                    appState.stripComments = parsed.stripComments !== false;
-                }
-            } catch (err) {
-                console.error("Localstorage recovery failed", err);
-            }
+        function resolveParagraphName(paraName) {
+            return paraName.split('-').map(token => {
+                const upper = token.toUpperCase();
+                if (appState.resolutions[paraName]?.[upper]) return appState.resolutions[paraName][upper];
+                if (appState.dictionary[upper]?.length > 0) return appState.dictionary[upper][0];
+                return token;
+            }).join('-');
         }
 
-        // Saves current program visualizer parameters in LocalStorage
-        function saveToLocalStorage() {
-            try {
-                localStorage.setItem('cob_viz_workspace_v2', JSON.stringify({
-                    rawCode: appState.rawCode,
-                    dictionary: appState.dictionary,
-                    resolutions: appState.resolutions,
-                    paragraphs: appState.paragraphs,
-                    comments: appState.comments,
-                    controlComments: appState.controlComments,
-                    nodePositions: appState.nodePositions,
-                    coverage: appState.coverage,
-                    lineControlPoints: appState.lineControlPoints,
-                    showResolved: appState.showResolved,
-                    stripSequence: appState.stripSequence,
-                    stripComments: appState.stripComments
-                }));
-            } catch (err) {
-                console.error("Localstorage backup failed", err);
-            }
+        function handleManualTokenResolution(paraName, token, val) {
+            if (!appState.resolutions[paraName]) appState.resolutions[paraName] = {};
+            appState.resolutions[paraName][token] = val;
+            saveToLocalStorage(); renderVisualizerWorkspace();
         }
 
-        // Re-populates textareas/inputs with retrieved data model states
-        function updateUIFromState() {
-            document.getElementById('cobol-code').value = appState.rawCode;
-            document.getElementById('chk-strip-seq').checked = appState.stripSequence;
-            document.getElementById('chk-strip-comments').checked = appState.stripComments;
-
-            renderDictionary();
-            renderVisualizerWorkspace();
-            updateGlobalStats();
+        function setResolvedMode(isRes) {
+            appState.showResolved = isRes;
+            const btnA = document.getElementById('btn-abbr-view'), btnR = document.getElementById('btn-resolved-view');
+            btnR.className = isRes ? "flex-1 text-center py-1.5 text-xs font-medium rounded transition duration-150 bg-cyan-600 text-white" : "flex-1 text-center py-1.5 text-xs font-medium rounded transition duration-150 text-slate-400 hover:text-white";
+            btnA.className = isRes ? "flex-1 text-center py-1.5 text-xs font-medium rounded transition duration-150 text-slate-400 hover:text-white" : "flex-1 text-center py-1.5 text-xs font-medium rounded transition duration-150 bg-cyan-600 text-white";
+            renderVisualizerWorkspace(); saveToLocalStorage();
         }
 
-        // Direct Manual Save button callback
-        function saveProject() {
-            saveToLocalStorage();
-            showNotification("Saved Status", "Workspace status backed up into browser local storage.");
+        function toggleControlCoverage(ctrlId) {
+            appState.coverage[ctrlId] = !appState.coverage[ctrlId];
+            appState.paragraphs.forEach(p => { forEachControl(p.controls, c => { if (c.id === ctrlId) c.tested = appState.coverage[ctrlId]; }); });
+            saveToLocalStorage(); renderVisualizerWorkspace();
         }
 
-        // Exports workspace completely into JSON File download
-        function exportAsJSON() {
-            saveToLocalStorage();
-            const payload = JSON.stringify(appState, null, 2);
-            const blob = new Blob([payload], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
-            
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `cobol-coverage-workspace-${new Date().toISOString().slice(0,10)}.json`;
-            link.click();
-
-            URL.revokeObjectURL(url);
-            showNotification("Export Complete", "Downloaded current project mapping JSON package.");
+        function toggleBranchCoverage(ctrlId, bIdx) {
+            const key = `${ctrlId}_branch_${bIdx}`;
+            appState.coverage[key] = !appState.coverage[key];
+            appState.paragraphs.forEach(p => { forEachControl(p.controls, c => { if (c.id === ctrlId) c.tested[bIdx] = appState.coverage[key]; }); });
+            saveToLocalStorage(); renderVisualizerWorkspace();
         }
 
-        function triggerImport() {
-            document.getElementById('file-import').click();
+        function updateControlNote(id, txt) { appState.controlComments[id] = txt; saveToLocalStorage(); }
+        function updateBranchNote(id, idx, txt) { appState.controlComments[`${id}_branch_${idx}`] = txt; saveToLocalStorage(); }
+        function updateParagraphComment(id, txt) { appState.comments[id] = txt; saveToLocalStorage(); }
+
+        function updateGlobalStats() {
+            let total = 0, tested = 0;
+            appState.paragraphs.forEach(p => {
+                forEachControl(p.controls, c => {
+                    if (c.type === 'IF_ELSE' || c.type === 'EVALUATE') { c.tested.forEach(val => { total++; if (val) tested++; }); } 
+                    else { total++; if (c.tested) tested++; }
+                });
+            });
+
+            const pct = total > 0 ? Math.round((tested / total) * 100) : 0;
+            document.getElementById('tested-count').innerText = `${tested} / ${total}`;
+            document.getElementById('tested-percentage').innerText = `${pct}%`;
+            document.getElementById('tested-progress-bar').style.width = `${pct}%`;
+            document.getElementById('report-total-paragraphs').innerText = appState.paragraphs.length;
+            document.getElementById('report-total-branches').innerText = total;
+            document.getElementById('report-tested-branches').innerText = tested;
+            document.getElementById('report-percentage').innerText = `${pct}%`;
         }
 
-        // Loads a complete workspace dataset file package
-        function importFromJsonFile(event) {
+        function renderDictionary() {
+            const tbody = document.getElementById('dictionary-list-tbody');
+            tbody.innerHTML = '';
+            Object.keys(appState.dictionary).sort().forEach(key => {
+                const tr = document.createElement('tr');
+                tr.className = "border-b border-slate-800 hover:bg-slate-850/50";
+                tr.innerHTML = `<td class="py-2.5 font-semibold text-slate-200 code-font uppercase">${key}</td><td class="py-2.5 text-slate-400 text-xs">${appState.dictionary[key].join(', ')}</td><td class="py-2.5 text-right"><button onclick="removeDictionaryEntry('${key}')" class="text-rose-400 hover:text-rose-300 transition" title="Delete mapping"><svg class="w-4 h-4 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button></td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function addDictionaryEntry() {
+            const keyInput = document.getElementById('dict-key'), valInput = document.getElementById('dict-value');
+            const key = keyInput.value.trim().toUpperCase(), val = valInput.value.trim();
+            if (!key || !val) return showNotification("Invalid Entry", "Code and values required.", "warn");
+
+            const vals = val.split(',').map(v => v.trim().toUpperCase()).filter(v => v.length > 0);
+            appState.dictionary[key] = vals;
+            renderDictionary(); saveToLocalStorage();
+            keyInput.value = ''; valInput.value = '';
+            showNotification("Updated", `Mapped ${key}.`);
+            if (appState.paragraphs.length > 0) renderVisualizerWorkspace();
+        }
+
+        function importDictionaryFile(event) {
             const file = event.target.files[0];
             if (!file) return;
-
             const reader = new FileReader();
             reader.onload = function(e) {
-                try {
-                    const parsed = JSON.parse(e.target.result);
-                    
-                    if (!parsed.paragraphs) {
-                        showNotification("Incorrect File", "Missing valid parser paragraph definitions.", "warn");
-                        return;
+                const lines = e.target.result.split('\n');
+                let added = 0;
+                lines.forEach(line => {
+                    const parts = line.trim().split(/\s+/);
+                    if (parts.length >= 2) {
+                        const abbr = parts.pop().toUpperCase(), word = parts.join(' ').toUpperCase();
+                        if (!appState.dictionary[abbr]) appState.dictionary[abbr] = [];
+                        if (!appState.dictionary[abbr].includes(word)) { appState.dictionary[abbr].push(word); added++; }
                     }
-
-                    appState.rawCode = parsed.rawCode || "";
-                    if (parsed.dictionary) appState.dictionary = parsed.dictionary;
-                    appState.resolutions = parsed.resolutions || {};
-                    appState.paragraphs = parsed.paragraphs || [];
-                    appState.comments = parsed.comments || {};
-                    appState.controlComments = parsed.controlComments || {};
-                    appState.nodePositions = parsed.nodePositions || {};
-                    appState.coverage = parsed.coverage || {};
-                    appState.lineControlPoints = parsed.lineControlPoints || {};
-                    appState.showResolved = parsed.showResolved === true;
-                    appState.stripSequence = parsed.stripSequence !== false;
-                    appState.stripComments = parsed.stripComments !== false;
-
-                    saveToLocalStorage();
-                    updateUIFromState();
-                    showNotification("Import Succeeded", "Workspace configuration restored!");
-                    switchTab('visualizer-tab');
-                } catch (err) {
-                    showNotification("Import Failure", "Failed to parse selected JSON configuration file.", "warn");
-                }
+                });
+                renderDictionary(); saveToLocalStorage(); document.getElementById('dict-file-import').value = '';
+                showNotification("Import Success", `Added ${added} mappings.`);
+                if (appState.paragraphs.length > 0) renderVisualizerWorkspace();
             };
             reader.readAsText(file);
         }
 
-        // Standard sample COBOL script program mock loader
-        function loadSampleProgram() {
-            const demo = ``;
+        function removeDictionaryEntry(key) {
+            delete appState.dictionary[key]; renderDictionary(); saveToLocalStorage();
+            if (appState.paragraphs.length > 0) renderVisualizerWorkspace();
+        }
 
+        function jumpToCode(paraName) {
+            switchTab('input-tab');
+            const ta = document.getElementById('cobol-code'), text = ta.value;
+            const regex = new RegExp(`^\\s*(?:[0-9A-Za-z]{6}\\s+)?${paraName}\\s*\\.`, 'im');
+            const match = text.match(regex);
+            if (match) {
+                ta.focus(); ta.setSelectionRange(match.index, match.index + match[0].length);
+                const linesToMatch = text.substr(0, match.index).split('\n').length;
+                ta.scrollTop = Math.max(0, (linesToMatch - 2) * 16);
+                showNotification("Code Located", `Scrolled to ${paraName}`, "success");
+            }
+        }
+
+        function loadFromLocalStorage() {
+            try {
+                const data = localStorage.getItem('cob_viz_workspace_v2_6');
+                if (data) { const parsed = JSON.parse(data); appState = { ...appState, ...parsed }; }
+            } catch (err) {}
+        }
+
+        function saveToLocalStorage() { try { localStorage.setItem('cob_viz_workspace_v2_6', JSON.stringify(appState)); } catch (err) {} }
+
+        function updateUIFromState() {
+            document.getElementById('cobol-code').value = appState.rawCode;
+            document.getElementById('chk-strip-seq').checked = appState.stripSequence;
+            document.getElementById('chk-strip-comments').checked = appState.stripComments;
+            if (appState.forceLayoutActive) { appState.forceLayoutActive = false; toggleForceLayout(); }
+            renderDictionary(); renderVisualizerWorkspace(); updateGlobalStats(); updateCanvasTransform();
+        }
+
+        function saveProject() { saveToLocalStorage(); showNotification("Saved Status", "Workspace status backed up into browser."); }
+
+        function exportAsJSON() {
+            saveToLocalStorage();
+            const blob = new Blob([JSON.stringify(appState, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url; link.download = `cobol-coverage-${new Date().toISOString().slice(0,10)}.json`;
+            link.click(); URL.revokeObjectURL(url);
+            showNotification("Export Complete", "Downloaded JSON package.");
+        }
+
+        function triggerImport() { document.getElementById('file-import').click(); }
+
+        function importFromJsonFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    if (!parsed.paragraphs) return showNotification("Incorrect File", "Missing parser logic.", "warn");
+                    appState = { ...appState, ...parsed };
+                    saveToLocalStorage(); updateUIFromState();
+                    showNotification("Import Succeeded", "Workspace restored!"); switchTab('visualizer-tab');
+                } catch (err) { showNotification("Import Failure", "Failed to parse JSON file.", "warn"); }
+            };
+            reader.readAsText(file);
+        }
+
+        function loadSampleProgram() {
+            const demo = `000100 IDENTIFICATION DIVISION.
+000200 PROGRAM-ID. CUSTOMER-ORDER-PROCESS.
+000300*
+000400 DATA DIVISION.
+000500 WORKING-STORAGE SECTION.
+000600 01  WS-EOF-FLAG         PIC X(1) VALUE 'N'.
+000700 01  WS-RCD-TYP          PIC X(1).
+000800 01  WS-ORD-VALID        PIC X(1) VALUE 'N'.
+000900*
+001000 PROCEDURE DIVISION.
+001100 A000-MAIN-PCS.
+001200     DISPLAY "STARTING PROCESSING".
+001300     PERFORM A010-STT-SLT-ORD-INF.
+001400     PERFORM C000-PRF-UNT-EOF UNTIL WS-EOF-FLAG = 'Y'.
+001500     DISPLAY "PROCESSING COMPLETE".
+001600     GOBACK.
+001700*
+001800 A010-STT-SLT-ORD-INF.
+001900     DISPLAY "SELECTING ORDER INFORMATION".
+002000     IF WS-ORD-VALID = 'Y'
+002100         DISPLAY "VALID ORDER"
+002200         PERFORM B000-EVAL-RCD-TYP
+002300     ELSE
+002400         DISPLAY "INVALID ORDER"
+002500         PERFORM B100-LOG-ERR
+002600     END-IF.
+002700*
+002800 B000-EVAL-RCD-TYP.
+002900     DISPLAY "EVALUATING RECORD TYPE".
+003000     EVALUATE WS-RCD-TYP
+003100         WHEN 'A'
+003200             DISPLAY "TYPE A PROCESSING"
+003300         WHEN 'B'
+003400             DISPLAY "TYPE B PROCESSING"
+003500         WHEN OTHER
+003600             DISPLAY "UNKNOWN TYPE"
+003700     END-EVALUATE.
+003800*
+003900 C000-PRF-UNT-EOF.
+004000     DISPLAY "--- BRANCH 2: PERFORM UNTIL LOOP ---".
+004100     PERFORM D000-LAYER-TWO
+004200         VARYING WS-COUNTER FROM 1 BY 1
+004300         UNTIL WS-COUNTER > WS-LOOP-LIMIT.
+004400*
+004500 D000-LAYER-TWO.
+004600     PERFORM UNTIL WS-Z-COUNTER >= 3
+004700         ADD 1 TO WS-Z-COUNTER
+004800         PERFORM Z002-FINAL-TASK
+004900     END-PERFORM.
+005000*
+005100 Z002-FINAL-TASK.
+005200     DISPLAY "TASK".`;
             document.getElementById('cobol-code').value = demo;
             appState.rawCode = demo;
-            
-            // Re-generate visualizer automatically
             processSourceCode();
-            applyAutoLayout();
         }
     </script>
 </body>
