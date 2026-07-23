@@ -33,24 +33,64 @@
         }
         .interactive-canvas:active { cursor: grabbing; }
 
-        .flow-path { transition: stroke 0.2s, stroke-width 0.2s, stroke-dasharray 0.2s; }
-        .flow-path:hover {
+        /* Flow Path Transitioning */
+        .flow-path { transition: stroke 0.2s, stroke-width 0.2s, stroke-dasharray 0.2s, opacity 0.2s, filter 0.2s; }
+        .node-card { transition: opacity 0.2s, filter 0.2s, box-shadow 0.2s, border-color 0.2s; }
+
+        /* Workspace Hover Dimming Mechanics */
+        .workspace-dimmed .node-card:not(.node-active) { 
+            opacity: 0.35; filter: grayscale(60%); 
+        }
+        .workspace-dimmed .flow-path:not(.path-active) { 
+            opacity: 0.15; 
+        }
+        
+        .node-active { 
+            box-shadow: 0 0 0 2px #38bdf8, 0 20px 25px -5px rgba(56,189,248,0.2) !important;
+            border-color: #38bdf8 !important;
+            z-index: 40 !important;
+            opacity: 1 !important;
+            filter: none !important;
+        }
+        .path-active { 
             stroke-width: 4px !important;
             filter: drop-shadow(0px 0px 6px currentColor);
+            z-index: 30;
+            opacity: 1 !important;
         }
 
         .dragging {
-            opacity: 0.85;
+            opacity: 0.85 !important;
             cursor: grabbing !important;
             border-color: #38bdf8 !important;
             box-shadow: 0 25px 50px -12px rgba(56, 189, 248, 0.25) !important;
-            z-index: 50;
+            z-index: 50 !important;
         }
 
         .no-select { user-select: none; -webkit-user-select: none; }
 
         .path-handle { transition: r 0.1s, fill 0.1s; }
         .path-handle:hover { r: 8; fill: #fbbf24; }
+
+        /* Tooltip */
+        #line-tooltip {
+            position: fixed;
+            background: rgba(15, 23, 42, 0.95);
+            color: #e0f2fe;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0;
+            transition: opacity 0.15s ease-in-out;
+            border: 1px solid #38bdf8;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+            transform: translate(-50%, -150%);
+            backdrop-filter: blur(4px);
+        }
+        #line-tooltip.visible { opacity: 1; }
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
@@ -62,7 +102,7 @@
             </svg>
             <div>
                 <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
-                    COB-Viz <span class="text-xs bg-cyan-500/20 text-cyan-400 font-normal px-2.5 py-0.5 rounded-full border border-cyan-500/30">Enterprise v2.6</span>
+                    COB-Viz <span class="text-xs bg-cyan-500/20 text-cyan-400 font-normal px-2.5 py-0.5 rounded-full border border-cyan-500/30">Enterprise v2.7</span>
                 </h1>
                 <p class="text-xs text-slate-400">Interactive COBOL Control Flow, Infinite Layout & Path Routing</p>
             </div>
@@ -171,6 +211,10 @@
                             <svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                             Toggle Force Layout
                         </button>
+                        <button onclick="toggleForceLayoutOld()" id="btn-force-layout-old" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white text-xs font-medium py-2 rounded flex items-center justify-center gap-1.5 transition duration-150">
+                            <svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                            Toggle Force Layout (Old)
+                        </button>
                     </div>
                 </div>
 
@@ -187,9 +231,10 @@
                 <div class="mt-auto pt-2">
                     <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Visual Flow Legend</h3>
                     <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2.5 text-xs text-slate-300">
-                        <div class="flex items-center space-x-2"><span class="w-4 h-1 bg-emerald-500 rounded"></span><span>Tested Branch</span></div>
-                        <div class="flex items-center space-x-2"><span class="w-4 h-1 bg-rose-500 rounded"></span><span>Untested Branch</span></div>
-                        <div class="flex items-center space-x-2"><span class="w-4 h-1 bg-amber-500 rounded border-t border-dashed border-amber-300"></span><span>Iteration / Loop Flow</span></div>
+                        <div class="flex items-center space-x-2"><span class="w-4 h-1 bg-purple-500 rounded"></span><span>Logic Dependent Flow</span></div>
+                        <div class="flex items-center space-x-2"><span class="w-4 h-1 bg-emerald-500 rounded"></span><span>Tested Flow</span></div>
+                        <div class="flex items-center space-x-2"><span class="w-4 h-1 bg-rose-500 rounded"></span><span>Untested Flow</span></div>
+                        <div class="flex items-center space-x-2"><span class="w-4 h-1 bg-amber-500 rounded border-t border-dashed border-amber-300"></span><span>Iteration / Loop</span></div>
                     </div>
                 </div>
 
@@ -214,6 +259,9 @@
                             </marker>
                             <marker id="arrow-loop" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                                 <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b" />
+                            </marker>
+                            <marker id="arrow-purple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                                <path d="M 0 0 L 10 5 L 0 10 z" fill="#a855f7" />
                             </marker>
                         </defs>
                         <g id="svg-connections-group"></g>
@@ -247,7 +295,9 @@
         </div>
     </main>
 
-    <!-- Notification Toast Element -->
+    <!-- Global Floating Elements -->
+    <div id="line-tooltip">Flow Direction</div>
+
     <div id="custom-toast" class="fixed bottom-5 right-5 z-50 bg-slate-900 border border-slate-800 text-white rounded-lg p-4 shadow-2xl flex items-center gap-3 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
         <div id="toast-icon-box" class="w-8 h-8 rounded-full flex items-center justify-center bg-cyan-500/20 text-cyan-400"></div>
         <div>
@@ -301,23 +351,17 @@
             const container = document.getElementById('canvas-container');
             if (!container) return;
             
-            // Re-apply saved transform
             updateCanvasTransform();
-            
-            // Window resize forces redraw to prevent line clipping
             window.addEventListener('resize', drawFlowlines);
             
-            // Zooming Mechanics (Mouse Wheel)
             container.addEventListener('wheel', function(e) {
                 e.preventDefault();
                 const zoomFactor = 1.08;
                 const direction = e.deltaY < 0 ? 1 : -1;
                 let newZoom = direction > 0 ? appState.zoomLevel * zoomFactor : appState.zoomLevel / zoomFactor;
                 
-                // Boundaries
                 newZoom = Math.max(0.2, Math.min(newZoom, 3.0));
                 
-                // Zoom towards mouse cursor dynamically
                 const rect = container.getBoundingClientRect();
                 const mouseX = e.clientX - rect.left;
                 const mouseY = e.clientY - rect.top;
@@ -330,11 +374,9 @@
                 drawFlowlines();
             }, { passive: false });
 
-            // Panning Mechanics (Click & Drag Empty Space)
             container.addEventListener('mousedown', function(e) {
-                if (e.button !== 0) return; // Left clicks only
+                if (e.button !== 0) return; 
                 
-                // Only pan if clicking on background grids or svg path overlays
                 const targetId = e.target.id;
                 const isBg = targetId === 'canvas-container' || targetId === 'visual-workspace' || targetId === 'svg-overlay' || e.target.tagName === 'svg';
                              
@@ -343,11 +385,11 @@
                     panStartX = e.clientX - appState.pan.x;
                     panStartY = e.clientY - appState.pan.y;
                     container.style.cursor = 'grabbing';
-                    e.preventDefault(); // Prevent text highlight
+                    e.preventDefault();
+                    clearHighlights(); // Clear highlights when panning starts
                 }
             });
 
-            // Universal mouse handlers for Panning and Control Point routing
             window.addEventListener('mousemove', function(e) {
                 if (isPanning) {
                     appState.pan.x = e.clientX - panStartX;
@@ -357,13 +399,11 @@
                 
                 if (isDraggingCP && activeCPDrag) {
                     const rect = container.getBoundingClientRect();
-                    // Map screen coordinate perfectly back into inner workspace coordinate
                     const mouseX = (e.clientX - rect.left - appState.pan.x) / appState.zoomLevel;
                     const mouseY = (e.clientY - rect.top - appState.pan.y) / appState.zoomLevel;
                     
                     if (activeCPDrag.type === 'mid') {
                         if (!appState.lineControlPoints[activeCPDrag.connectionKey]) appState.lineControlPoints[activeCPDrag.connectionKey] = [];
-
                         appState.lineControlPoints[activeCPDrag.connectionKey][activeCPDrag.index] = { x: mouseX, y: mouseY };
                     } else {
                         if (!appState.connectionOffsets) appState.connectionOffsets = {};
@@ -372,7 +412,6 @@
                         const nodePos = appState.nodePositions[targetNode];
                         appState.connectionOffsets[activeCPDrag.connectionKey][activeCPDrag.type] = { dx: mouseX - nodePos.x, dy: mouseY - nodePos.y };
                     }
-                    
                     drawFlowlines();
                 }
             });
@@ -381,18 +420,24 @@
                 if (isPanning) {
                     isPanning = false;
                     container.style.cursor = 'grab';
-                    saveToLocalStorage(); // Save pan state
+                    saveToLocalStorage(); 
                 }
                 if (isDraggingCP) {
-                    if (activeCPDrag && (activeCPDrag.type === 'start' || activeCPDrag.type === 'end')) {
-                        snapToCardEdge(activeCPDrag);
-                    }
+                    if (activeCPDrag && (activeCPDrag.type === 'start' || activeCPDrag.type === 'end')) snapToCardEdge(activeCPDrag);
                     isDraggingCP = false;
                     activeCPDrag = null;
                     saveToLocalStorage();
                     drawFlowlines();
                 }
             });
+        }
+
+        /* Helper to clear hover effects globally */
+        function clearHighlights() {
+            document.getElementById('canvas-container').classList.remove('workspace-dimmed');
+            document.querySelectorAll('.node-active').forEach(el => el.classList.remove('node-active'));
+            document.querySelectorAll('.path-active').forEach(el => el.classList.remove('path-active'));
+            document.getElementById('line-tooltip').classList.remove('visible');
         }
 
         function snapToCardEdge(dragInfo) {
@@ -410,10 +455,7 @@
             let ptX = cardPos.x + offset.dx;
             let ptY = cardPos.y + offset.dy;
             
-            const left = cardPos.x;
-            const right = cardPos.x + w;
-            const top = cardPos.y;
-            const bottom = cardPos.y + h;
+            const left = cardPos.x, right = cardPos.x + w, top = cardPos.y, bottom = cardPos.y + h;
             
             let snappedX = ptX, snappedY = ptY;
             
@@ -422,16 +464,12 @@
             if (ptY < top) snappedY = top;
             else if (ptY > bottom) snappedY = bottom;
             
-            // If it's completely inside, push it to the nearest boundary.
             if (ptX >= left && ptX <= right && ptY >= top && ptY <= bottom) {
                 const dLeft = ptX - left, dRight = right - ptX, dTop = ptY - top, dBottom = bottom - ptY;
                 const minDist = Math.min(dLeft, dRight, dTop, dBottom);
-                if (minDist === dLeft) snappedX = left;
-                else if (minDist === dRight) snappedX = right;
-                else if (minDist === dTop) snappedY = top;
-                else snappedY = bottom;
+                if (minDist === dLeft) snappedX = left; else if (minDist === dRight) snappedX = right;
+                else if (minDist === dTop) snappedY = top; else snappedY = bottom;
             }
-            
             appState.connectionOffsets[key][dragInfo.type] = { dx: snappedX - cardPos.x, dy: snappedY - cardPos.y };
         }
 
@@ -446,34 +484,17 @@
             }
         }
 
-        function changeZoom(factor) {
-            appState.zoomLevel = Math.max(0.2, Math.min(appState.zoomLevel + factor, 3.0));
-            updateCanvasTransform();
-            drawFlowlines();
-        }
-
-        function resetZoomAndPan() {
-            appState.zoomLevel = 1.0;
-            appState.pan = { x: 0, y: 0 };
-            updateCanvasTransform();
-            drawFlowlines();
-        }
+        function changeZoom(factor) { appState.zoomLevel = Math.max(0.2, Math.min(appState.zoomLevel + factor, 3.0)); updateCanvasTransform(); drawFlowlines(); }
+        function resetZoomAndPan() { appState.zoomLevel = 1.0; appState.pan = { x: 50, y: 50 }; updateCanvasTransform(); drawFlowlines(); }
 
         function switchTab(tabId) {
             const tabs = ['input-tab', 'visualizer-tab', 'report-tab'];
             tabs.forEach(t => {
                 const btn = document.getElementById(`btn-${t}`);
                 const view = document.getElementById(`view-${t}`);
-                
-                if (t === tabId) {
-                    btn.className = "px-4 py-2 text-sm font-medium rounded-md transition-all duration-150 bg-slate-800 text-white shadow-inner";
-                    view.classList.remove('hidden');
-                } else {
-                    btn.className = "px-4 py-2 text-sm font-medium rounded-md transition-all duration-150 text-slate-400 hover:text-white";
-                    view.classList.add('hidden');
-                }
+                if (t === tabId) { btn.className = "px-4 py-2 text-sm font-medium rounded-md transition-all duration-150 bg-slate-800 text-white shadow-inner"; view.classList.remove('hidden'); } 
+                else { btn.className = "px-4 py-2 text-sm font-medium rounded-md transition-all duration-150 text-slate-400 hover:text-white"; view.classList.add('hidden'); }
             });
-
             if (tabId === 'visualizer-tab') setTimeout(() => drawFlowlines(), 50);
             else if (tabId === 'report-tab') buildCoverageReport();
         }
@@ -501,140 +522,138 @@
         }
 
         function parseCOBOLCode(code, stripSeq, stripComments) {
-        const lines = code.split('\n');
-        let processedLines = [];
+            const lines = code.split('\n');
+            let processedLines = [];
 
-        for (let line of lines) {
-            let processed = line;
-            if (stripSeq && processed.length >= 6) processed = processed.substring(6);
-            if (stripComments) {
-                let commentChar = stripSeq ? line.charAt(6) : line.charAt(0);
-                if (commentChar === '*' || commentChar === '/') continue;
+            for (let line of lines) {
+                let processed = line;
+                if (stripSeq && processed.length >= 6) processed = processed.substring(6);
+                if (stripComments) {
+                    let commentChar = stripSeq ? line.charAt(6) : line.charAt(0);
+                    if (commentChar === '*' || commentChar === '/') continue;
+                }
+                if (stripSeq && processed.length > 66) processed = processed.substring(0, 66);
+                let inlineIdx = processed.indexOf('*>');
+                if (inlineIdx !== -1) processed = processed.substring(0, inlineIdx);
+                processedLines.push(processed);
             }
-            if (stripSeq && processed.length > 66) processed = processed.substring(0, 66);
-            let inlineIdx = processed.indexOf('*>');
-            if (inlineIdx !== -1) processed = processed.substring(0, inlineIdx);
-            processedLines.push(processed);
-        }
 
-        let paragraphs = [];
-        let currentParagraph = null;
-        const paragraphRegex = /^\s*([A-Za-z0-9_-]+)\s*\.\s*$/i;
-        const sectionRegex = /^\s*([A-Za-z0-9_-]+)\s+SECTION\s*\.\s*$/i;
-        const systemIgnore = [
-            "EXIT", "STOP", "RUN", "GOBACK", "WORKING-STORAGE", "LINKAGE", 
-            "FILE", "LOCAL-STORAGE", "INPUT-OUTPUT", "CONFIGURATION",
-            "DATA", "ENVIRONMENT", "PROCEDURE", "IDENTIFICATION",
-            "END-IF", "END-EVALUATE", "END-PERFORM", "END-READ", "END-WRITE", 
-            "END-ADD", "END-SUBTRACT", "END-MULTIPLY", "END-DIVIDE", "END-COMPUTE", 
-            "END-SEARCH", "END-RETURN", "END-CALL", "ELSE", "WHEN"
-        ];
+            let paragraphs = [];
+            let currentParagraph = null;
+            const paragraphRegex = /^\s*([A-Za-z0-9_-]+)\s*\.\s*$/i;
+            const sectionRegex = /^\s*([A-Za-z0-9_-]+)\s+SECTION\s*\.\s*$/i;
+            const systemIgnore = [
+                "EXIT", "STOP", "RUN", "GOBACK", "WORKING-STORAGE", "LINKAGE", 
+                "FILE", "LOCAL-STORAGE", "INPUT-OUTPUT", "CONFIGURATION",
+                "DATA", "ENVIRONMENT", "PROCEDURE", "IDENTIFICATION",
+                "END-IF", "END-EVALUATE", "END-PERFORM", "END-READ", "END-WRITE", 
+                "END-ADD", "END-SUBTRACT", "END-MULTIPLY", "END-DIVIDE", "END-COMPUTE", 
+                "END-SEARCH", "END-RETURN", "END-CALL", "ELSE", "WHEN"
+            ];
 
-        for (let i = 0; i < processedLines.length; i++) {
-            let text = processedLines[i].trim();
-            if (!text) continue;
-            if (text.toUpperCase().includes("DIVISION.")) continue;
+            for (let i = 0; i < processedLines.length; i++) {
+                let text = processedLines[i].trim();
+                if (!text) continue;
+                if (text.toUpperCase().includes("DIVISION.")) continue;
 
-            let matchPara = text.match(paragraphRegex);
-            let matchSec = text.match(sectionRegex);
-            let paraName = matchSec ? matchSec[1] : (matchPara ? matchPara[1] : null);
+                let matchPara = text.match(paragraphRegex);
+                let matchSec = text.match(sectionRegex);
+                let paraName = matchSec ? matchSec[1] : (matchPara ? matchPara[1] : null);
 
-            if (paraName && systemIgnore.includes(paraName.toUpperCase())) paraName = null;
-            if (paraName && paraName.toUpperCase().endsWith("DIVISION")) paraName = null;
+                if (paraName && systemIgnore.includes(paraName.toUpperCase())) paraName = null;
+                if (paraName && paraName.toUpperCase().endsWith("DIVISION")) paraName = null;
 
-            if (paraName) {
-                if (currentParagraph) paragraphs.push(currentParagraph);
-                currentParagraph = { name: paraName, lines: [], controls: [] };
-            } else if (currentParagraph) {
-                currentParagraph.lines.push(processedLines[i]);
-            }
-        }
-        if (currentParagraph) paragraphs.push(currentParagraph);
-
-        const tokenRegex = /(IF\b)|(ELSE\b)|(END-IF\b)|(EVALUATE\b)|(WHEN\b[^.\n]*)|(END-EVALUATE\b)|(END-PERFORM\b)|(PERFORM\b\s+[A-Za-z0-9_-]+(?:(?:\s+UNTIL|\s+VARYING|\s+TIMES|\s+\d+)[^.\n]*)?)|(PERFORM\b[^.\n]*)|(\.)/gi;
-
-        paragraphs.forEach(para => {
-            let text = para.lines.join('\n').replace(/"[^"]*"|'[^']*'/g, '""');
-            let counter = 0;
-            let tree = [];
-            let stack = [ { targetList: tree, type: 'ROOT' } ];
-
-            let match;
-            while ((match = tokenRegex.exec(text)) !== null) {
-                let token = match[0];
-                let upper = token.toUpperCase();
-
-                if (upper.startsWith('IF')) {
-                    let c = { id: `${para.name}-ctrl-${counter++}`, type: 'IF_ELSE', text: 'IF Decision', branches: [{name:'IF True',controls:[]}, {name:'ELSE',controls:[]}], tested: [false,false] };
-                    stack[stack.length-1].targetList.push(c);
-                    stack.push({ targetList: c.branches[0].controls, type: 'IF', ref: c });
-                } else if (upper.startsWith('ELSE')) {
-                    let idx = stack.length - 1;
-                    while(idx >= 0 && stack[idx].type !== 'IF') idx--;
-                    if (idx >= 0) {
-                        stack.length = idx + 1;
-                        stack[stack.length-1].targetList = stack[stack.length-1].ref.branches[1].controls;
-                    }
-                } else if (upper.startsWith('END-IF')) {
-                    let idx = stack.length - 1;
-                    while(idx >= 0 && stack[idx].type !== 'IF') idx--;
-                    if (idx >= 0) stack.length = idx;
-                } else if (upper.startsWith('EVALUATE')) {
-                    let c = { id: `${para.name}-ctrl-${counter++}`, type: 'EVALUATE', text: 'EVALUATE Block', branches: [], tested: [] };
-                    stack[stack.length-1].targetList.push(c);
-                    stack.push({ targetList: [], type: 'EVALUATE', ref: c });
-                } else if (upper.startsWith('WHEN')) {
-                    let idx = stack.length - 1;
-                    while(idx >= 0 && stack[idx].type !== 'EVALUATE') idx--;
-                    if (idx >= 0) {
-                        stack.length = idx + 1;
-                        let ref = stack[stack.length-1].ref;
-                        let bIdx = ref.branches.length;
-                        ref.branches.push({ name: token.trim(), controls: [] });
-                        ref.tested.push(false);
-                        stack[stack.length-1].targetList = ref.branches[bIdx].controls;
-                    }
-                } else if (upper.startsWith('END-EVALUATE')) {
-                    let idx = stack.length - 1;
-                    while(idx >= 0 && stack[idx].type !== 'EVALUATE') idx--;
-                    if (idx >= 0) stack.length = idx;
-                } else if (upper.startsWith('END-PERFORM')) {
-                    let idx = stack.length - 1;
-                    while(idx >= 0 && stack[idx].type !== 'PERFORM_INLINE') idx--;
-                    if (idx >= 0) stack.length = idx;
-                } else if (upper.startsWith('PERFORM')) {
-                    // Check if it calls a specific target paragraph vs an inline block (e.g., PERFORM UNTIL ...)
-                    let tgtMatch = token.match(/PERFORM\s+([A-Za-z0-9_-]+)/i);
-                    let reservedKeywords = ['UNTIL', 'VARYING', 'WITH', 'TEST', 'TIMES'];
-                    let hasNamedTarget = tgtMatch && !reservedKeywords.includes(tgtMatch[1].toUpperCase());
-
-                    if (hasNamedTarget) {
-                        let isLoop = upper.includes('UNTIL') || upper.includes('VARYING') || upper.includes('TIMES');
-                        let c = { id: `${para.name}-ctrl-${counter++}`, type: isLoop ? 'PERFORM_LOOP' : 'PERFORM', target: tgtMatch[1], text: token.trim(), tested: false };
-                        stack[stack.length-1].targetList.push(c);
-                    } else {
-                        // Inline PERFORM block containing nested statements
-                        let c = { id: `${para.name}-ctrl-${counter++}`, type: 'PERFORM_LOOP', text: token.trim(), controls: [], tested: false };
-                        stack[stack.length-1].targetList.push(c);
-                        stack.push({ targetList: c.controls, type: 'PERFORM_INLINE', ref: c });
-                    }
-                } else if (token === '.') {
-                    stack = [stack[0]];
+                if (paraName) {
+                    if (currentParagraph) paragraphs.push(currentParagraph);
+                    currentParagraph = { name: paraName, lines: [], controls: [] };
+                } else if (currentParagraph) {
+                    currentParagraph.lines.push(processedLines[i]);
                 }
             }
-            para.controls = tree;
-        });
+            if (currentParagraph) paragraphs.push(currentParagraph);
 
-        return paragraphs;
-    }
+            const tokenRegex = /(IF\b)|(ELSE\b)|(END-IF\b)|(EVALUATE\b)|(WHEN\b[^.\n]*)|(END-EVALUATE\b)|(END-PERFORM\b)|(PERFORM\b\s+[A-Za-z0-9_-]+(?:(?:\s+UNTIL|\s+VARYING|\s+TIMES|\s+\d+)[^.\n]*)?)|(PERFORM\b[^.\n]*)|(\.)/gi;
 
-        function forEachControl(controls, callback) {
+            paragraphs.forEach(para => {
+                let text = para.lines.join('\n').replace(/"[^"]*"|'[^']*'/g, '""');
+                let counter = 0;
+                let tree = [];
+                let stack = [ { targetList: tree, type: 'ROOT' } ];
+
+                let match;
+                while ((match = tokenRegex.exec(text)) !== null) {
+                    let token = match[0];
+                    let upper = token.toUpperCase();
+
+                    if (upper.startsWith('IF')) {
+                        let c = { id: `${para.name}-ctrl-${counter++}`, type: 'IF_ELSE', text: 'IF Decision', branches: [{name:'IF True',controls:[]}, {name:'ELSE',controls:[]}], tested: [false,false] };
+                        stack[stack.length-1].targetList.push(c);
+                        stack.push({ targetList: c.branches[0].controls, type: 'IF', ref: c });
+                    } else if (upper.startsWith('ELSE')) {
+                        let idx = stack.length - 1;
+                        while(idx >= 0 && stack[idx].type !== 'IF') idx--;
+                        if (idx >= 0) {
+                            stack.length = idx + 1;
+                            stack[stack.length-1].targetList = stack[stack.length-1].ref.branches[1].controls;
+                        }
+                    } else if (upper.startsWith('END-IF')) {
+                        let idx = stack.length - 1;
+                        while(idx >= 0 && stack[idx].type !== 'IF') idx--;
+                        if (idx >= 0) stack.length = idx;
+                    } else if (upper.startsWith('EVALUATE')) {
+                        let c = { id: `${para.name}-ctrl-${counter++}`, type: 'EVALUATE', text: 'EVALUATE Block', branches: [], tested: [] };
+                        stack[stack.length-1].targetList.push(c);
+                        stack.push({ targetList: [], type: 'EVALUATE', ref: c });
+                    } else if (upper.startsWith('WHEN')) {
+                        let idx = stack.length - 1;
+                        while(idx >= 0 && stack[idx].type !== 'EVALUATE') idx--;
+                        if (idx >= 0) {
+                            stack.length = idx + 1;
+                            let ref = stack[stack.length-1].ref;
+                            let bIdx = ref.branches.length;
+                            ref.branches.push({ name: token.trim(), controls: [] });
+                            ref.tested.push(false);
+                            stack[stack.length-1].targetList = ref.branches[bIdx].controls;
+                        }
+                    } else if (upper.startsWith('END-EVALUATE')) {
+                        let idx = stack.length - 1;
+                        while(idx >= 0 && stack[idx].type !== 'EVALUATE') idx--;
+                        if (idx >= 0) stack.length = idx;
+                    } else if (upper.startsWith('END-PERFORM')) {
+                        let idx = stack.length - 1;
+                        while(idx >= 0 && stack[idx].type !== 'PERFORM_INLINE') idx--;
+                        if (idx >= 0) stack.length = idx;
+                    } else if (upper.startsWith('PERFORM')) {
+                        let tgtMatch = token.match(/PERFORM\s+([A-Za-z0-9_-]+)/i);
+                        let reservedKeywords = ['UNTIL', 'VARYING', 'WITH', 'TEST', 'TIMES'];
+                        let hasNamedTarget = tgtMatch && !reservedKeywords.includes(tgtMatch[1].toUpperCase());
+
+                        if (hasNamedTarget) {
+                            let isLoop = upper.includes('UNTIL') || upper.includes('VARYING') || upper.includes('TIMES');
+                            let c = { id: `${para.name}-ctrl-${counter++}`, type: isLoop ? 'PERFORM_LOOP' : 'PERFORM', target: tgtMatch[1], text: token.trim(), tested: false };
+                            stack[stack.length-1].targetList.push(c);
+                        } else {
+                            let c = { id: `${para.name}-ctrl-${counter++}`, type: 'PERFORM_LOOP', text: token.trim(), controls: [], tested: false };
+                            stack[stack.length-1].targetList.push(c);
+                            stack.push({ targetList: c.controls, type: 'PERFORM_INLINE', ref: c });
+                        }
+                    } else if (token === '.') {
+                        stack = [stack[0]];
+                    }
+                }
+                para.controls = tree;
+            });
+            return paragraphs;
+        }
+
+        // Modified for recursive propagation of logic-dependent context flag
+        function forEachControl(controls, callback, isLogicDependent = false) {
             controls.forEach(c => {
-                callback(c);
+                callback(c, isLogicDependent);
                 if (c.type === 'IF_ELSE' || c.type === 'EVALUATE') {
-                    c.branches.forEach(b => forEachControl(b.controls, callback));
+                    c.branches.forEach(b => forEachControl(b.controls, callback, true)); // pass true inside logic branches
                 } else if (c.type === 'INLINE_PERFORM') {
-                    forEachControl(c.controls, callback);
+                    forEachControl(c.controls, callback, isLogicDependent);
                 }
             });
         }
@@ -798,7 +817,7 @@
                 const srcCard = document.getElementById(`card-${para.name}`);
                 if (!srcCard) return;
 
-                forEachControl(para.controls, ctrl => {
+                forEachControl(para.controls, (ctrl, isLogicDependent) => {
                     if (ctrl.target) {
                         const targetPara = appState.paragraphs.find(p => p.name === ctrl.target);
                         if (targetPara) {
@@ -812,9 +831,19 @@
                                 const targetCardY = appState.nodePositions[targetPara.name].y;
                                 const connectionKey = `${ctrl.id}_to_${targetPara.name}`;
 
+                                // Accurate placement for nested items: Use global layout rects
+                                let y1 = srcCardY;
+                                const srcRect = srcCard.getBoundingClientRect();
+                                const rowRect = sourceRow.getBoundingClientRect();
+                                if (srcRect.height > 0) { 
+                                    // Divide relative screen offset by zoom scale to convert back to workspace coords
+                                    const relativeTop = (rowRect.top - srcRect.top) / appState.zoomLevel;
+                                    y1 += relativeTop + (sourceRow.offsetHeight / 2);
+                                } else {
+                                    y1 += sourceRow.offsetTop + (sourceRow.offsetHeight / 2); // Fallback
+                                }
+
                                 let x1 = srcCardX + srcCard.offsetWidth;
-                                let y1 = srcCardY + sourceRow.offsetTop + (sourceRow.offsetHeight / 2);
-                                
                                 let x2 = targetCardX + (targetCard.offsetWidth / 2);
                                 let y2 = targetCardY; 
                                 
@@ -861,7 +890,15 @@
                                 const isTested = appState.coverage[ctrl.id] === true;
                                 let color = isTested ? '#10b981' : '#ef4444';
                                 let marker = isTested ? 'url(#arrow-tested)' : 'url(#arrow-untested)';
-                                if (isPerformLoop) { color = '#f59e0b'; marker = 'url(#arrow-loop)'; }
+
+                                // Specific feature: Purple for logic-dependent (IF/EVALUATE branches) overrides
+                                if (isLogicDependent) {
+                                    color = '#a855f7'; 
+                                    marker = 'url(#arrow-purple)';
+                                } else if (isPerformLoop) { 
+                                    color = '#f59e0b'; 
+                                    marker = 'url(#arrow-loop)'; 
+                                }
 
                                 const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
 
@@ -879,10 +916,37 @@
                                 pathReal.setAttribute("stroke-width", "2.5");
                                 pathReal.setAttribute("fill", "none");
                                 pathReal.setAttribute("marker-end", marker);
-                                pathReal.setAttribute("class", "flow-path");
+                                pathReal.setAttribute("class", `flow-path path-src-${para.name} path-tgt-${targetPara.name}`);
+                                pathReal.dataset.src = para.name;
+                                pathReal.dataset.tgt = targetPara.name;
                                 pathReal.setAttribute("stroke-linejoin", "round");
                                 pathReal.setAttribute("stroke-linecap", "round");
                                 if (isPerformLoop) pathReal.setAttribute("stroke-dasharray", "6, 4");
+
+                                // Handle tooltip & global path hover highlight
+                                pathHelper.addEventListener('mouseenter', (e) => {
+                                    if (isDraggingCP || isPanning) return;
+                                    document.getElementById('canvas-container').classList.add('workspace-dimmed');
+                                    pathReal.classList.add('path-active');
+                                    srcCard.classList.add('node-active');
+                                    targetCard.classList.add('node-active');
+                                    
+                                    const tooltip = document.getElementById('line-tooltip');
+                                    tooltip.innerHTML = `<span class='text-slate-400'>${para.name}</span> ➔ <span class='text-cyan-300'>${targetPara.name}</span>`;
+                                    tooltip.classList.add('visible');
+                                    tooltip.style.left = e.clientX + 'px';
+                                    tooltip.style.top = e.clientY + 'px';
+                                });
+
+                                pathHelper.addEventListener('mousemove', (e) => {
+                                    const tooltip = document.getElementById('line-tooltip');
+                                    if (tooltip.classList.contains('visible')) {
+                                        tooltip.style.left = e.clientX + 'px';
+                                        tooltip.style.top = e.clientY + 'px';
+                                    }
+                                });
+
+                                pathHelper.addEventListener('mouseleave', () => clearHighlights());
 
                                 pathHelper.addEventListener('mousedown', function(e) {
                                     if (e.button !== 0) return;
@@ -1057,7 +1121,7 @@
                 const pos = appState.nodePositions[para.name] || { x: 50, y: 50 };
                 const card = document.createElement('div');
                 card.id = `card-${para.name}`;
-                card.className = "absolute w-80 bg-slate-900 border border-slate-800 rounded-xl shadow-xl flex flex-col overflow-hidden no-select hover:border-slate-700 transition-colors";
+                card.className = "absolute w-80 bg-slate-900 border border-slate-800 rounded-xl shadow-xl flex flex-col overflow-hidden no-select hover:border-slate-700 node-card";
                 card.style.left = `${pos.x}px`; card.style.top = `${pos.y}px`;
 
                 let headerContent = '';
@@ -1112,10 +1176,27 @@
                 cardFooter.innerHTML = `<div class="pt-2 border-t border-slate-850"><textarea onchange="updateParagraphComment('${para.name}', this.value)" class="w-full bg-slate-950 border border-slate-850 rounded-lg p-2 text-[10px] text-slate-300 placeholder-slate-500 resize-none h-14 focus:outline-none focus:border-slate-700" placeholder="General paragraph comment/notes...">${appState.comments[para.name] || ''}</textarea></div>`;
                 card.appendChild(cardFooter);
 
+                // Add node hover logic
+                card.addEventListener('mouseenter', () => {
+                    if (isDraggingCP || isPanning || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') return;
+                    document.getElementById('canvas-container').classList.add('workspace-dimmed');
+                    card.classList.add('node-active');
+                    
+                    document.querySelectorAll(`.path-src-${para.name}, .path-tgt-${para.name}`).forEach(p => {
+                        p.classList.add('path-active');
+                        const s = p.dataset.src;
+                        const t = p.dataset.tgt;
+                        if(s) document.getElementById(`card-${s}`)?.classList.add('node-active');
+                        if(t) document.getElementById(`card-${t}`)?.classList.add('node-active');
+                    });
+                });
+
+                card.addEventListener('mouseleave', () => clearHighlights());
+
                 container.appendChild(card);
                 makeNodeDraggable(card, para.name);
             });
-            setTimeout(drawFlowlines, 20);
+            setTimeout(drawFlowlines, 20); // allow layout flush
         }
 
         function makeNodeDraggable(element, paraName) {
@@ -1132,6 +1213,7 @@
                 document.onmouseup = closeDragElement;
                 document.onmousemove = elementDrag;
                 element.classList.add('dragging');
+                clearHighlights(); // reset any hovers during drag
             }
 
             function elementDrag(e) {
@@ -1151,6 +1233,31 @@
             }
         }
 
+
+		function toggleForceLayoutOld(autoStop = false) {
+			appState.forceLayoutActive = !appState.forceLayoutActive;
+			const btn = document.getElementById('btn-force-layout-old');
+			
+			if (appState.forceLayoutActive) {
+				btn.classList.add('bg-rose-600', 'border-rose-500');
+				btn.classList.remove('bg-slate-800', 'border-slate-700');
+				btn.innerHTML = `<svg class="w-3.5 h-3.5 text-white animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> Stop Simulation`;
+				
+				appState.forceAlpha = 1.0;
+				appState.paragraphs.forEach(p => { p.vx = 0; p.vy = 0; });
+				forceLoopOld();
+				showNotification("Force Layout", "Organic physics simulation started.");
+			} else {
+				btn.classList.remove('bg-rose-600', 'border-rose-500');
+				btn.classList.add('bg-slate-800', 'border-slate-700');
+				btn.innerHTML = `<svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg> Toggle Force Layout`;
+				
+				cancelAnimationFrame(forceAnimFrame);
+				showNotification("Force Layout", autoStop ? "Nodes settled into place." : "Simulation paused.");
+				saveToLocalStorage();
+			}
+		}
+
         function toggleForceLayout(autoStop = false) {
             appState.forceLayoutActive = !appState.forceLayoutActive;
             const btn = document.getElementById('btn-force-layout');
@@ -1161,7 +1268,11 @@
                 btn.innerHTML = `<svg class="w-3.5 h-3.5 text-white animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> Stop Simulation`;
                 
                 appState.forceAlpha = 1.0;
-                appState.paragraphs.forEach(p => { p.vx = 0; p.vy = 0; });
+                appState.paragraphs.forEach(p => {
+                    if (!appState.nodePositions[p.name]) appState.nodePositions[p.name] = { x: 0, y: 0 };
+                    appState.nodePositions[p.name].vx = 0;
+                    appState.nodePositions[p.name].vy = 0;
+                });
                 forceLoop();
                 showNotification("Force Layout", "Organic physics simulation started.");
             } else {
@@ -1175,12 +1286,12 @@
             }
         }
         
-        function forceLoop() {
+        function forceLoopOld() {
             if (!appState.forceLayoutActive) return;
             
             appState.forceAlpha *= 0.97;
             if (appState.forceAlpha < 0.005) {
-                toggleForceLayout(true);
+                toggleForceLayoutOld(true);
                 return;
             }
             
@@ -1190,7 +1301,6 @@
             const damping = 0.6;
             const centerK = 0.002 * appState.forceAlpha;
             
-            // 1. Node-Node Repulsion & overlap prevention
             for (let i = 0; i < appState.paragraphs.length; i++) {
                 for (let j = i + 1; j < appState.paragraphs.length; j++) {
                     let p1Name = appState.paragraphs[i].name;
@@ -1234,7 +1344,6 @@
                 }
             }
             
-            // 2. Node-Edge Repulsion (Weaker distance requirement)
             let edges = [];
             appState.paragraphs.forEach(p => {
                 forEachControl(p.controls, c => {
@@ -1277,7 +1386,7 @@
                     let dy = cy3 - projY;
                     let distSq = dx*dx + dy*dy;
                     
-                    if (distSq < 20000) { // ~140px threshold radius
+                    if (distSq < 20000) { 
                         let dist = Math.sqrt(distSq) || 1;
                         let force = edgeRepWeight / (distSq + 1);
                         p3.vx += (dx/dist) * force;
@@ -1286,7 +1395,6 @@
                 });
             });
             
-            // 3. Attraction and Straightening
             appState.paragraphs.forEach(p => {
                 if(!appState.nodePositions[p.name]) return;
                 let card1 = document.getElementById(`card-${p.name}`);
@@ -1329,7 +1437,6 @@
                 });
             });
             
-            // 4. Move nodes
             let cx = 0, cy = 0, validNodes = 0;
             appState.paragraphs.forEach(p => {
                 if(appState.nodePositions[p.name]) { cx += appState.nodePositions[p.name].x; cy += appState.nodePositions[p.name].y; validNodes++; }
@@ -1356,6 +1463,147 @@
             forceAnimFrame = requestAnimationFrame(forceLoop);
         }
 
+        function forceLoop() {
+            if (!appState.forceLayoutActive) return;
+            
+            appState.forceAlpha *= 0.97;
+            if (appState.forceAlpha < 0.005) {
+                toggleForceLayout(true);
+                return;
+            }
+            
+            const linkStrength = 0.001 * appState.forceAlpha; 
+            const restDistance = 1000; 
+            const rep = 4000 * appState.forceAlpha; 
+            const distanceMax = 1000; 
+            const damping = 0.1;
+            const paddingX = 100;
+            const paddingY = 50;
+
+            // 1. Extract links and build lookup set
+            const links = [];
+            const linkSet = new Set();
+            appState.paragraphs.forEach(para => {
+                if (!para.controls) return;
+                forEachControl(para.controls, (ctrl) => {
+                    if (ctrl.target && appState.nodePositions[para.name] && appState.nodePositions[ctrl.target]) {
+                        links.push({ source: para.name, target: ctrl.target });
+                        linkSet.add(`${para.name}-${ctrl.target}`);
+                        linkSet.add(`${ctrl.target}-${para.name}`);
+                    }
+                });
+            });
+
+            // Ensure all node positions have initialized vx/vy
+            appState.paragraphs.forEach(p => {
+                let pos = appState.nodePositions[p.name];
+                if (pos) {
+                    if (pos.vx === undefined) pos.vx = 0;
+                    if (pos.vy === undefined) pos.vy = 0;
+                }
+            });
+
+            // 2. Apply Link/Edge Spring Forces
+            for (let link of links) {
+                let sourceNode = appState.nodePositions[link.source];
+                let targetNode = appState.nodePositions[link.target];
+                if (!sourceNode || !targetNode) continue;
+
+                let card1 = document.getElementById(`card-${link.source}`);
+                let card2 = document.getElementById(`card-${link.target}`);
+                let w1 = card1 ? card1.offsetWidth : 320, h1 = card1 ? card1.offsetHeight : 100;
+                let w2 = card2 ? card2.offsetWidth : 320, h2 = card2 ? card2.offsetHeight : 100;
+
+                let c1x = sourceNode.x + w1 / 2, c1y = sourceNode.y + h1 / 2;
+                let c2x = targetNode.x + w2 / 2, c2y = targetNode.y + h2 / 2;
+
+                let dx = c2x - c1x, dy = c2y - c1y;
+                let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                
+                let displacement = dist - restDistance;
+                let force = linkStrength * displacement;
+                
+                let fx = (dx / dist) * force;
+                let fy = (dy / dist) * force;
+
+                sourceNode.vx += fx;
+                sourceNode.vy += fy;
+                targetNode.vx -= fx;
+                targetNode.vy -= fy;
+            }
+
+            // 3. Apply Repulsion and Collision Detection
+            for (let i = 0; i < appState.paragraphs.length; i++) {
+                for (let j = i + 1; j < appState.paragraphs.length; j++) {
+                    let p1Name = appState.paragraphs[i].name;
+                    let p2Name = appState.paragraphs[j].name;
+                    let p1 = appState.nodePositions[p1Name];
+                    let p2 = appState.nodePositions[p2Name];
+                    if (!p1 || !p2) continue;
+                    
+                    let card1 = document.getElementById(`card-${p1Name}`);
+                    let card2 = document.getElementById(`card-${p2Name}`);
+                    let w1 = card1 ? card1.offsetWidth : 320, h1 = card1 ? card1.offsetHeight : 100;
+                    let w2 = card2 ? card2.offsetWidth : 320, h2 = card2 ? card2.offsetHeight : 100;
+                    
+                    let c1x = p1.x + w1 / 2, c1y = p1.y + h1 / 2;
+                    let c2x = p2.x + w2 / 2, c2y = p2.y + h2 / 2;
+
+                    let dx = c1x - c2x, dy = c1y - c2y;
+                    let distSq = dx * dx + dy * dy;
+                    if (distSq < 1) { dx = Math.random() * 10; dy = Math.random() * 10; distSq = dx * dx + dy * dy; }
+                    let dist = Math.sqrt(distSq);
+                    
+                    let minXDist = (w1 + w2) / 2 + paddingX; 
+                    let minYDist = (h1 + h2) / 2 + paddingY;
+                    
+                    if (Math.abs(dx) < minXDist && Math.abs(dy) < minYDist) {
+                        let pushX = (minXDist - Math.abs(dx)) * Math.sign(dx) * 0.5 * appState.forceAlpha;
+                        let pushY = (minYDist - Math.abs(dy)) * Math.sign(dy) * 0.5 * appState.forceAlpha;
+                        p1.vx += pushX; 
+                        p1.vy += pushY;
+                        p2.vx -= pushX; 
+                        p2.vy -= pushY;
+                    }
+                    
+                    const areConnected = linkSet.has(`${p1Name}-${p2Name}`);
+                    if (!areConnected && dist < distanceMax) {
+                        let force = rep / (distSq + 1);
+                        let fx = (dx / dist) * force;
+                        let fy = (dy / dist) * force;
+
+                        p1.vx += fx; 
+                        p1.vy += fy;
+                        p2.vx -= fx; 
+                        p2.vy -= fy;
+                    }
+                }
+            }
+
+            // 4. Update Node Positions & DOM Elements
+            for (let p of appState.paragraphs) {
+                let pos = appState.nodePositions[p.name];
+                if (!pos) continue;
+
+                pos.x += pos.vx;
+                pos.y += pos.vy;
+                pos.vx *= damping;
+                pos.vy *= damping;
+
+                let card = document.getElementById(`card-${p.name}`);
+                if (card) {
+                    card.style.left = `${pos.x}px`;
+                    card.style.top = `${pos.y}px`;
+                }
+            }
+
+            // 5. Redraw SVG connections
+            drawFlowlines();
+
+            // 6. Continue Loop
+            forceAnimFrame = requestAnimationFrame(forceLoop);
+        }
+        
         function buildReportLogsRecursive(controls, depth = 0) {
             let html = '';
             controls.forEach(c => {
@@ -1562,12 +1810,12 @@
 
         function loadFromLocalStorage() {
             try {
-                const data = localStorage.getItem('cob_viz_workspace_v2_6');
+                const data = localStorage.getItem('cob_viz_workspace_v2_7');
                 if (data) { const parsed = JSON.parse(data); appState = { ...appState, ...parsed }; }
             } catch (err) {}
         }
 
-        function saveToLocalStorage() { try { localStorage.setItem('cob_viz_workspace_v2_6', JSON.stringify(appState)); } catch (err) {} }
+        function saveToLocalStorage() { try { localStorage.setItem('cob_viz_workspace_v2_7', JSON.stringify(appState)); } catch (err) {} }
 
         function updateUIFromState() {
             document.getElementById('cobol-code').value = appState.rawCode;
@@ -1577,20 +1825,14 @@
             renderDictionary(); renderVisualizerWorkspace(); updateGlobalStats(); updateCanvasTransform();
         }
 
-        function saveProject() { saveToLocalStorage(); showNotification("Saved Status", "Workspace status backed up into browser."); }
-
+        function saveProject() { saveToLocalStorage(); showNotification("Saved Status", "Project local cache updated."); }
         function exportAsJSON() {
-            saveToLocalStorage();
-            const blob = new Blob([JSON.stringify(appState, null, 2)], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url; link.download = `cobol-coverage-${new Date().toISOString().slice(0,10)}.json`;
-            link.click(); URL.revokeObjectURL(url);
-            showNotification("Export Complete", "Downloaded JSON package.");
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appState, null, 2));
+            const node = document.createElement('a');
+            node.setAttribute("href", dataStr); node.setAttribute("download", `cob_viz_export_${Date.now()}.json`);
+            document.body.appendChild(node); node.click(); node.remove();
         }
-
         function triggerImport() { document.getElementById('file-import').click(); }
-
         function importFromJsonFile(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -1598,11 +1840,11 @@
             reader.onload = function(e) {
                 try {
                     const parsed = JSON.parse(e.target.result);
-                    if (!parsed.paragraphs) return showNotification("Incorrect File", "Missing parser logic.", "warn");
                     appState = { ...appState, ...parsed };
-                    saveToLocalStorage(); updateUIFromState();
-                    showNotification("Import Succeeded", "Workspace restored!"); switchTab('visualizer-tab');
-                } catch (err) { showNotification("Import Failure", "Failed to parse JSON file.", "warn"); }
+                    updateUIFromState();
+                    showNotification("Import Success", "Project loaded.");
+                } catch (err) { showNotification("Import Error", "Invalid JSON format.", "warn"); }
+                document.getElementById('file-import').value = '';
             };
             reader.readAsText(file);
         }
